@@ -370,27 +370,21 @@ void CollideBGK::perform_ufp(Particle::OnePart* ip, int icell, const CommMacro* 
     //(0, 1, 2, 3, 4, 5)
     //(00,11,22,01,02,12)
     const double* Sij = cinfo[icell].macro.Lij;
-    double vn[3];
-    double v[3];
     const double* vm = grid->cells[icell].macro.v;
+    double vn[3];
     double cof_d = cinfo[icell].macro.coef_A; //漂移系数
     double theta = interMacro->Temp / particle->species[ip->ispecies].mass * update->boltz;
-    for (int i = 0; i < 3; i++) {
-        v[i] = ip->v[i];
+    for (int i = 0; i < 3; i++)
         vn[i] = random->gaussian() * sqrt(theta);
-    }
+
     //ES-Fokker-Planck:
     // c(t) = (c(0)-u)*cof_d + sqrt(RT)*gaussian_k*Sik[]+u;
     // 0 3 4
-    //   1 5
-    //     2
-
-    //ip->v[0] = (v[0] - vm[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0];
-    //ip->v[1] = (v[1] - vm[1]) * cof_d + vn[0] * Sij[3] + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1];
-    //ip->v[2] = (v[2] - vm[2]) * cof_d + vn[0] * Sij[4] + vn[1] * Sij[5] + vn[2] * Sij[2] + interMacro->v[2];
-    ip->v[0] = (v[0] - vm[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0];
-    ip->v[1] = (v[1] - vm[1]) * cof_d + vn[0] * Sij[3] + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1];
-    ip->v[2] = (v[2] - vm[2]) * cof_d + vn[0] * Sij[4] + vn[1] * Sij[5] + vn[2] * Sij[2] + interMacro->v[2];
+    // - 1 5
+    // - - 2
+    ip->v[0] = (ip->v[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0] * (1 - cof_d);
+    ip->v[1] = (ip->v[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1] * (1 - cof_d);
+    ip->v[2] = (ip->v[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2] * (1 - cof_d);
 }
 
 void CollideBGK::perform_esfp(Particle::OnePart* ip, int icell, const CommMacro* interMacro)
@@ -685,10 +679,6 @@ template < int MOD > void CollideBGK::computeMacro()
                 mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
                     + pij[i] / p * (1 - time_ave_coef);
             }
-            /*char str[256];
-            sprintf(str, "esfp pij    %lf    %lf   %lf\n      %lf %lf\n              %lf",
-                mean_nmacro.sigma_ij[0], mean_nmacro.sigma_ij[3], mean_nmacro.sigma_ij[4], mean_nmacro.sigma_ij[1], mean_nmacro.sigma_ij[5], mean_nmacro.sigma_ij[2]);
-            error->warning(FLERR, str);*/
             double Eij[6]{};
             for (int i = 0; i < 3; ++i) {
                 //对角部分
@@ -698,10 +688,6 @@ template < int MOD > void CollideBGK::computeMacro()
             for (int i = 3; i < 6; ++i) {
                 Eij[i] = mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A);
             }
-            //char str[256];
-           /* sprintf(str, "esfp tao = %lf cofA = %lf cof_B = %lf\n    %lf    %lf   %lf\n      %lf %lf\n              %lf",
-                tao, cof_A, cof_B, Eij[0], Eij[3], Eij[4], Eij[1], Eij[5], Eij[2]);
-            error->warning(FLERR, str);*/
             //cholesky分解
             // cholesky分解满足线性关系，可以先分解后平均
             // 0 3 4
@@ -715,10 +701,6 @@ template < int MOD > void CollideBGK::computeMacro()
             mean_nmacro.Lij[4] = Eij[4] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[5] = (Eij[5] - mean_nmacro.Lij[4] * mean_nmacro.Lij[3]) / mean_nmacro.Lij[1];
             mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
-            //char str[256];
-            /*sprintf(str, "esfp cholesky de\n   %lf   %lf   %lf\n    %lf  %lf\n            %lf",
-                mean_nmacro.Lij[0], mean_nmacro.Lij[3], mean_nmacro.Lij[4], mean_nmacro.Lij[1], mean_nmacro.Lij[5], mean_nmacro.Lij[2]);
-            error->warning(FLERR, str);*/
         }
         else if (MOD == UFP) {
             //漂移，扩散系数
@@ -726,20 +708,8 @@ template < int MOD > void CollideBGK::computeMacro()
             double tao_A = (1 - 1.5 * tao) / (1 + 1.5 * tao);
             double cof_A = tao_A * pow(abs(tao_A), 1.0 / 3) / abs(tao_A);
             double cof_B = (1 - 1.5 * tao / Pr) / (1 + 1.5 * tao / Pr);
-            char str[128];
-            sprintf(str, "%lf %lf %lf ufp",
-                tao, cof_A, cof_B);
-            error->warning(FLERR, str);
             mean_nmacro.coef_A = cof_A;
             mean_nmacro.coef_B = cof_B;
-            //char str[128];
-            //sprintf(str, "%lf %lf",
-            //    cof_A, cof_B);
-            //error->warning(FLERR, str);
-            //char str[128];
-            //sprintf(str, "%.4lf 漂移系数 %.4lf 扩散系数, tao = %.4f",
-            //    cof_A, cof_B, tao);
-            //error->warning(FLERR, str);
             //应力矩阵
             double factor = ((double)np / (np - 1)) * mass * update->fnum * cinfo.weight / cell.dt_weight / cinfo.volume;
             for (int i = 0; i < 3; ++i) {
@@ -748,16 +718,24 @@ template < int MOD > void CollideBGK::computeMacro()
             pij[3] = factor * (sum_vij[3] - np * v[0] * v[1]);
             pij[4] = factor * (sum_vij[4] - np * v[0] * v[2]);
             pij[5] = factor * (sum_vij[5] - np * v[1] * v[2]);
-            // no time-average Eij
-            double Eij[6]{};
             p = (pij[0] + pij[1] + pij[2]) / 3.0;
+            // time-average no_dimension_sigma_ij
+            for (int i = 0; i < 3; ++i) {
+                mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
+                    + (pij[i] - p) / p * (1 - time_ave_coef);
+            }
+            for (int i = 3; i < 6; ++i) {
+                mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
+                    + pij[i] / p * (1 - time_ave_coef);
+            }
+            double Eij[6]{};
             for (int i = 0; i < 3; ++i) {
                 //对角部分
                 Eij[i] = (1 - cof_A * cof_A)
-                    + (pij[i] / p - 1) * (cof_B - cof_A * cof_A);
+                    + mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A);
             }
             for (int i = 3; i < 6; ++i) {
-                Eij[i] = pij[i] / p * (cof_B - cof_A * cof_A);
+                Eij[i] = mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A);
             }
             //cholesky分解
             // cholesky分解满足线性关系，可以先分解后平均
@@ -765,19 +743,13 @@ template < int MOD > void CollideBGK::computeMacro()
             //   1 5
             //     2
             //从上到下，从左往右，平方根法分解
-            double Lij[6]{};
-            Lij[0] = sqrt(Eij[0]);
-            Lij[3] = Eij[3] / Lij[0];
-            Lij[1] = sqrt(Eij[1] - Lij[3] * Lij[3]);
-            Lij[4] = Eij[4] / Lij[0];
-            Lij[5] = (Eij[5] - Lij[4] * Lij[3]) / Lij[1];
-            Lij[2] = sqrt(Eij[2] - Lij[4] * Lij[4] - Lij[5] * Lij[5]);
-
-            //time-average Lij
-            for (int i = 0; i < 6; ++i) {
-                mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
-                    + Lij[i] * (1 - time_ave_coef);
-            }
+ /*           double Lij[6]{};*/
+            mean_nmacro.Lij[0] = sqrt(Eij[0]);
+            mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
+            mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
+            mean_nmacro.Lij[4] = Eij[4] / mean_nmacro.Lij[0];
+            mean_nmacro.Lij[5] = (Eij[5] - mean_nmacro.Lij[4] * mean_nmacro.Lij[3]) / mean_nmacro.Lij[1];
+            mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
         }
     }
 
