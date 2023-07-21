@@ -62,6 +62,8 @@ class CollideBGK : public Collide {
   void perform_bgkbgk(Particle::OnePart*, int, const class CommMacro*);
   void perform_esbgk(Particle::OnePart*, int, const class CommMacro*);
   void perform_sbgk(Particle::OnePart*, int, const class CommMacro*);
+  void perform_esfp(Particle::OnePart*, int, const class CommMacro*);
+  void perform_ufp(Particle::OnePart*, int, const class CommMacro*);
   void conservV();
   double extract(int, int, const char*) { return 0.0; };
 

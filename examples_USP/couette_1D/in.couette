@@ -14,14 +14,14 @@ global			gridcut -1.0 comm/sort yes
 boundary		p s p
 
 create_box		0 1 0 4.9542e-6 -0.5 0.5
-create_grid		1 300 1
+create_grid		1 100 1
 
 balance_grid		rcb part
 
-surf_collide		lo diffuse 273 1 translate 337.18 0 0
+surf_collide		lo diffuse 273 1 translate 20 0 0
 bound_modify		ylo collide lo
 
-surf_collide		hi diffuse 273 1 translate -337.18 0 0
+surf_collide		hi diffuse 273 1 translate -20 0 0
 bound_modify		yhi collide hi
 species			ar.species Ar
 mixture			air Ar vstream 0.0 0.0 0.0 temp 273
@@ -38,7 +38,9 @@ global			fnum 2.2208e15
 ## original BGK 
 #collide			bgk air bgk ar.bgk 
 ## USP-BGK 
-collide			bgk air usp ar.bgk 
+#collide			bgk air usp ar.bgk 
+## ES-FP 
+collide			bgk air esfp ar.bgk 
 
 # collide_bgk_modify is a new command to set some parameter in BGK-like 
 # method, can only be used when collide mode is bgk
@@ -49,19 +51,27 @@ collide			bgk air usp ar.bgk
 # reset_wmax  whether and how to reduce Wmax in accept-reject method
 #             if no W > Wmax this loop in this cell , Wmax *= reset_wmax 
 #             ( {f_u = W * f_maxwell} in USP algorithm)
-collide_bgk_modify pr_num 0.66667 time_ave 0.99 reset_wmax 0.99 
+collide_bgk_modify pr_num 0.6667 time_ave 0.99 reset_wmax 0.99 #0.66667
 
 create_particles	air n 0
 
 stats			1000
 compute			1 grid all air massrho u 
 compute			2 thermal/grid all air temp press
+compute                                  3  boundary all n press shx ke
+compute                                  4 pflux/grid all air momxy momxz momyz
 
 stats_style	    step cpu np 
 
-timestep 		2.9394e-11
+timestep 		                2.9394e-11#1.5e-9
+run 			50000
+fix			1 ave/grid all 1 25000 25000 c_1[*] c_2[*] #ave running
+fix			2 ave/grid all 1 25000 25000 c_4[*]
+fix				3 ave/time 1 25000 25000 c_3[*] ave running mode vector &
+                  file   data/boundary_esfp_Pr=1.5.dat
 
-fix			1 ave/grid all 1 10000 10000 c_1[*] c_2[*] #ave running
-dump			1 grid all 10000 data/esbgk.*.dat id yc f_1[*]
+dump			1 grid all 25000 data/grid_esfp_Pr=1.5_.*.dat id yc f_1[*]
+dump			2 grid all 25000 data/pflux_esfp_Pr=1.5_.*.dat id yc f_2[*]
+#dump			2  all 100000 data/surf_ufp.*.dat id  f_2[*]
 
 run 			50000

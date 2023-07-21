@@ -34,6 +34,7 @@ struct NoCommMacro {
     double sum_vij[6]; //(00,11,22,01,02,12)
     double sum_C2vi[3];
     double sigma_ij[6]; // shear stress, time-ave (00,11,22,01,02,12)
+    double Lij[6];      //Fokker-Planck collide
     double qi[3]; // heat flux ,time-ave
     double Wmax;
     double coef_A, coef_B, tao;
