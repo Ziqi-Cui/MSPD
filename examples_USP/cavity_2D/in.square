@@ -5,7 +5,7 @@
 # kfeng@buaa.edu.cn 
 ###########################################################
 
-variable collision_style index usp 
+variable collision_style index ufp 
 shell			mkdir data
 seed			    1234
 dimension		2
@@ -47,10 +47,10 @@ stats_style		step cpu np
 
 
 timestep 		4.2525e-10
-run 			10000
+run 			100000
 
-fix			1 ave/grid all 1 10000 10000 c_1[*] c_2[*] ave running
-dump			1 grid all 10000 data/cavity.${collision_style}.*.dat xc yc f_1[*]
+fix			1 ave/grid all 1 100000 100000 c_1[*] c_2[*] ave running
+dump			1 grid all 100000 data/cavity_ufp.${collision_style}.*.dat xc yc f_1[*]
 
 run 			1000000
 

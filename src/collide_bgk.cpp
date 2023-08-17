@@ -703,6 +703,7 @@ template < int MOD > void CollideBGK::computeMacro()
             mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
         }
         else if (MOD == UFP) {
+
             //漂移，扩散系数
             double tao = mean_nmacro.tao;
             double tao_A = (1 - 1.5 * tao) / (1 + 1.5 * tao);
@@ -722,20 +723,20 @@ template < int MOD > void CollideBGK::computeMacro()
             // time-average no_dimension_sigma_ij
             for (int i = 0; i < 3; ++i) {
                 mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
-                    + (pij[i] - p) / p * (1 - time_ave_coef);
+                    + (pij[i] - p) / p * (1 - time_ave_coef) / (1 + 1.5 * tao / Pr);
             }
             for (int i = 3; i < 6; ++i) {
                 mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
-                    + pij[i] / p * (1 - time_ave_coef);
+                    + pij[i] / p * (1 - time_ave_coef) / (1 + 1.5 * tao / Pr);
             }
             double Eij[6]{};
             for (int i = 0; i < 3; ++i) {
                 //对角部分
                 Eij[i] = (1 - cof_A * cof_A)
-                    + mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A);
+                    + mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A) * (1 + 1.5 * tao / Pr);
             }
             for (int i = 3; i < 6; ++i) {
-                Eij[i] = mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A);
+                Eij[i] = mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A) * (1 + 1.5 * tao / Pr);
             }
             //cholesky分解
             // cholesky分解满足线性关系，可以先分解后平均

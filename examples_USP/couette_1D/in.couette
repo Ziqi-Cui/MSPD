@@ -60,18 +60,20 @@ compute			1 grid all air massrho u
 compute			2 thermal/grid all air temp press
 compute                                  3  boundary all n press shx ke
 compute                                  4 pflux/grid all air momxy momxz momyz
+compute 			5 eflux/grid all air heatx heaty heatz
 
 stats_style	    step cpu np 
 
-timestep 		               1.5e-9# 2.9394e-11#1.5e-9
-run 			50000
-fix			1 ave/grid all 1 25000 25000 c_1[*] c_2[*] #ave running
-fix			2 ave/grid all 1 25000 25000 c_4[*]
-fix				3 ave/time 1 25000 25000 c_3[*] ave running mode vector &
-                  file   data/boundary_ufp.dat
+timestep 		                1.5e-9#2.9394e-11#6e-10# 2.9394e-11#1.5e-9
+run 			100000
+fix			1 ave/grid all 1 10000 10000 c_1[*] c_2[*] #ave running
+fix			2 ave/grid all 1 10000 10000 c_4[*]
+fix				3 ave/time 1 10000 10000 c_3[*] ave running mode vector &
+                  file   data/boundary_ufp_fourier.dat
+fix			4 ave/grid all 1 10000 10000 c_5[*]
 
-dump			1 grid all 25000 data/grid_ufp.*.dat id yc f_1[*]
-dump			2 grid all 25000 data/pflux_ufp.*.dat id yc f_2[*]
-#dump			2  all 100000 data/surf_ufp.*.dat id  f_2[*]
+dump			1 grid all 10000 data/grid_usp.*.dat id yc f_1[*]
+dump			2 grid all 10000 data/pflux_usp.*.dat id yc f_2[*]
+dump			3 grid all 10000 data/eflux_usp.*.dat id yc f_4[*]
 
-run 			50000
+run 			100000
