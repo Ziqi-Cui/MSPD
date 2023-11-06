@@ -1,0 +1,57 @@
+#2d flow around flat
+seed	    	    12345
+dimension   	    2
+global              gridcut 0.0 comm/sort yes cellmax 9999 surfmax 9999
+boundary	    	o ro p	
+
+create_box  	    0 1 0 0.6 -0.5 0.5
+create_grid 	    100 90 1
+balance_grid        rcb cell
+global		    	nrho 1e20 fnum 5e14 temp 300 vstream 1412.5 0 0
+species		    	air.species N2
+mixture             species copy air
+
+#read_surf			surf/data.bound group bound scale 2 2.2 3.7 trans -0.25 0 0 clip invert
+#surf_collide	    2 vanish 
+#surf_modify        bound collide 2 
+
+
+read_surf			data.triangle scale 0.01285 1e-9 1 trans 0.1 0 0 clip #invert
+surf_collide	    1 diffuse 500 1 
+surf_modify        	all collide 1 
+
+
+collide		    	vss all air.vss relax constant
+collide_modify      vibrate no rotate smooth #vremax 1000 yes
+collide_modify	    nearcp yes 3
+#react              tce air.tce
+
+#fix		   		in emit/surf air bound perspecies yes
+fix		   			in emit/face air xlo yhi perspecies yes
+stats		   		1
+stats_style	    	step cpu np ncoll nscoll 
+timestep 	    	4e-6
+stats		   		10 
+run		    		2000
+#adapt_grid	        all refine surf all 1e-5 iterate 3 maxlevel 3 cells 2 2 2 dir 1 0 0 
+#adapt_grid	        all refine particle 40 40 iterate 5
+#write_grid			parent data.gridp
+
+compute 			1 grid all all u v n nrho massrho trot tvib
+fix 				1 ave/grid all 1 10000 10000 c_1[*] ave running
+compute				2 thermal/grid all all temp press
+fix					2 ave/grid all 1 10000 10000 c_2[*] ave running
+#compute				3 lambda/grid f_1[4] f_2[1] N2 kx
+dump 				1 grid all 20000 gridw*.dat xc yc f_1[*] f_2[1]
+dump_modify		    1 format float %12.5g
+
+compute 			4 surf all all ke
+fix					4 ave/surf all 1 10000 10000 c_4[*] ave running
+dump 				4 surf all 20000 surfw*.dat id f_4[*]
+dump_modify		    4 format float %12.5g
+
+
+stats		    	10
+stats_style	    	step cpu np ncoll
+run 		    	18000
+

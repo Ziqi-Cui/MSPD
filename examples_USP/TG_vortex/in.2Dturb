@@ -1,0 +1,58 @@
+# 2-D homogeneous turbulence, Argon gas, output turblent energy cascade
+        
+seed	    	    12      
+
+dimension   	    2                              #2维问题
+global              gridcut 8.88E-07 comm/sort yes   #grid cut
+boundary	    p p p
+
+create_box          0 2.2726846E-04 0 2.2726846E-04 -0.5 0.5   #z方向高度为1
+create_grid 	    512 512 1 block 2 2 1
+balance_grid        clump xyz
+
+species		        ar.species Ar 
+mixture		        ar Ar temp 300
+global              fnum 3.171339E+11
+
+collide             vss ar ar.vss
+
+#############根据手册，温度、密度生成的是比例的分布，而宏观速度生成的是绝对值的分布#######################
+
+read_particles  particle_Kn_0.00025_cell512.dat 0  #读入预先设置好的各向同性速度场
+
+####################################################################
+timestep            1.42E-11
+
+#compute             1 grid all ar u v n nrho
+compute             2 temp
+#compute             3 thermal/grid all ar temp press
+
+#compute             4 fft/grid c_1[1] c_1[2] sum yes conjugate yes kmag yes        #计算u、v的傅里叶变换模平方，并求和，得到谱张量的迹。同时输出波数模值。
+#compute             5 fft/grid c_1[4] c_3[1] c_3[2] sum no conjugate yes kmag yes  #依次计算密度、温度和压强的傅里叶变换模平方。同时输出波数模值。
+
+#fix                 1 ave/grid all 1 400 400 c_4[*]          #对谱张量的迹求短时平均
+#fix                 2 ave/grid all 1 400 400 c_5[*]          #对密度、温度、压强谱求短时平均
+
+stats		    5
+stats_style	    step cpu spcpu np ncomm nattempt ncoll c_2
+
+#dump                1 grid all 6000 mac_ins.dat xc yc c_1[*] c_3[*]     #每6000步输出一次瞬时流场数据
+#dump                2 grid all 6000 fft_velocity_ins.dat c_4[*]         #输出谱张量迹的瞬时值
+#dump                3 grid all 6000 fft_thermo_ins.dat c_5[*]           #输出热力学量谱的瞬时值
+
+#dump                4 grid all 6000 fft_velocity_ave.dat f_1[*]         #输出谱张量迹的均值
+#dump                5 grid all 6000 fft_thermo_ave.dat f_2[*]           #输出热力学量谱的均值
+
+run 		    120000
+
+
+
+
+
+
+
+
+   
+
+
+

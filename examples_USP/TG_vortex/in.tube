@@ -1,0 +1,64 @@
+###########################################################
+# Input script of flat flow Re=1000 Ma = 0.2
+#
+# Feng Kai 
+# kfeng@buaa.edu.cn 
+###########################################################
+
+variable collision_style index ufp 
+shell			mkdir data
+seed			    1234
+dimension		2
+global			gridcut -1 comm/sort yes 
+
+boundary		o p p
+
+create_box		0.0 1.0 -0.5 0.5 -0.5 0.5
+create_grid		60 1 1
+
+balance_grid		rcb cell
+
+
+
+
+species			ar.species Ar
+mixture			air Ar vstream 0.0 0.0 0.0 temp 273
+mixture			l Ar nrho 1.5083e21 vstream 0.0 0.0 0.0 temp 273
+mixture			r Ar nrho 1.8854e20 vstream 0.0 0.0 0.0 temp 273
+
+fix		   		left emit/face l xlo 
+fix		   		right emit/face r xhi 
+
+region			1 block 0.0 0.5 -0.5 0.5 -0.5 0.5
+region			2 block 0.5 1.0 -0.5 0.5 -0.5 0.5
+
+#create_particles	air n 240000000 region 1
+#create_particles	air n 30000000 region 2
+create_particles	air n 12000000 region 1
+create_particles	air n 1500000 region 2
+
+#global			fnum 6.2846e12
+global			fnum 1.2569e14
+if "${collision_style}== dsmc" then &
+  "collide			vss air ar.vss" &
+else &
+  "collide			bgk air ${collision_style} ar.bgk" &
+  "collide_bgk_modify pr_num 0.66667 time_ave 0 reset_wmax 0.9999 "
+
+
+stats			1
+compute			1 grid all air nrho u v
+compute			2 thermal/grid all air temp
+stats_style		step cpu np
+
+
+#timestep 		5.9597e-7
+timestep 		1.1930e-05
+
+dump			1 grid all 57 data/Sodtube_ufp.*.dat xc yc c_1[*] c_2[*]
+
+run 			57
+
+
+
+

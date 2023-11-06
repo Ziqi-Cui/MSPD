@@ -1,0 +1,48 @@
+################################################################################
+
+seed			5432
+dimension		2
+global			gridcut -1.0 comm/sort yes gravity 2.2472e6 1 0 0
+
+boundary		p s p
+
+create_box		0 1 0 6.3592e-5 -0.5 0.5
+create_grid		1 2000 1
+
+balance_grid		rcb part
+
+surf_collide		lo diffuse 273 1 translate 0 0 0
+bound_modify		ylo collide lo
+
+surf_collide		hi diffuse 273 1 translate 0 0 0
+bound_modify		yhi collide hi
+species			ar.species Ar
+mixture			air Ar vstream 0.0 0.0 0.0 temp 273
+
+global			nrho 2.688546513247709e+25
+global			fnum 2.8495e+15
+
+collide			bgk air esbgk ar.bgk 
+
+create_particles	air n 0
+
+stats			1000
+compute			1 grid all air n massrho u 
+compute			2 thermal/grid all air temp press
+compute			3 pflux/grid all air momyy momxy
+compute			4 eflux/grid all air heaty 
+compute                                  5  boundary all n press shx ke
+
+stats_style	    step cpu np 
+
+
+timestep 		3.34e-11
+run 			1500000
+
+fix			1 ave/grid all 1 500000 500000 c_1[*] c_2[*] c_3[*] c_4[*] ave running
+fix				2 ave/time 1 500000 500000 c_5[*] ave running mode vector &
+                  file   data/boundary_ufp_Poiseuille.dat
+
+dump			1 grid all 500000 data/Poiseuille.*.dat id yc f_1[*]
+
+run 			1000000

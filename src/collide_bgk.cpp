@@ -385,6 +385,9 @@ void CollideBGK::perform_ufp(Particle::OnePart* ip, int icell, const CommMacro* 
     ip->v[0] = (ip->v[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0] * (1 - cof_d);
     ip->v[1] = (ip->v[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1] * (1 - cof_d);
     ip->v[2] = (ip->v[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2] * (1 - cof_d);
+    //ip->v[0] = (ip->v[0] - vm[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0];
+    //ip->v[1] = (ip->v[1] - vm[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1];
+    //ip->v[2] = (ip->v[2] - vm[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2];
 }
 
 void CollideBGK::perform_esfp(Particle::OnePart* ip, int icell, const CommMacro* interMacro)
@@ -407,13 +410,13 @@ void CollideBGK::perform_esfp(Particle::OnePart* ip, int icell, const CommMacro*
     // 0 3 4
     //   1 5
     //     2
-
-    //ip->v[0] = (ip->v[0] - vm[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0];
-    //ip->v[1] = (ip->v[1] - vm[1]) * cof_d + vn[0] * Sij[3] + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1];
-    //ip->v[2] = (ip->v[2] - vm[2]) * cof_d + vn[0] * Sij[4] + vn[1] * Sij[5] + vn[2] * Sij[2] + interMacro->v[2];
     ip->v[0] = (ip->v[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0] * (1 - cof_d);
     ip->v[1] = (ip->v[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1] * (1 - cof_d);
     ip->v[2] = (ip->v[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2] * (1 - cof_d);
+    //无插值
+    //ip->v[0] = (ip->v[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + vm[0] * (1 - cof_d);
+    //ip->v[1] = (ip->v[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + vm[1] * (1 - cof_d);
+    //ip->v[2] = (ip->v[2]) * cof_d + vn[2] * Sij[2] + vm[2] * (1 - cof_d);
     //char str[256];
     //sprintf(str, "esfp vp = %lf %lf %lf\n vm = %lf %lf %lf\n   %lf   %lf  %lf\n       %lf  %lf\n               %lf",
     //    ip->v[0], ip->v[1], ip->v[2], vm[0], vm[1], vm[2], Sij[0], Sij[3], Sij[4], Sij[1], Sij[5], Sij[2]);
@@ -695,6 +698,34 @@ template < int MOD > void CollideBGK::computeMacro()
             //     2
             //从上到下，从左往右，平方根法分解
  /*           double Lij[6]{};*/
+
+            if (Eij[0] < 0)
+            {
+                mean_nmacro.Lij[0] = 0;
+                mean_nmacro.Lij[3] = 0;
+                mean_nmacro.Lij[4] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
+            if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
+            {
+                mean_nmacro.Lij[1] = 0;
+                mean_nmacro.Lij[5] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
+            if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
+            {
+                mean_nmacro.Lij[2] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
             mean_nmacro.Lij[0] = sqrt(Eij[0]);
             mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
@@ -745,6 +776,33 @@ template < int MOD > void CollideBGK::computeMacro()
             //     2
             //从上到下，从左往右，平方根法分解
  /*           double Lij[6]{};*/
+            if (Eij[0] < 0)
+            {
+                mean_nmacro.Lij[0] = 0;
+                mean_nmacro.Lij[3] = 0;
+                mean_nmacro.Lij[4] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
+            if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
+            {
+                mean_nmacro.Lij[1] = 0;
+                mean_nmacro.Lij[5] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
+            if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
+            {
+                mean_nmacro.Lij[2] = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+
             mean_nmacro.Lij[0] = sqrt(Eij[0]);
             mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
