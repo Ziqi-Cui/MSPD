@@ -46,7 +46,7 @@ using namespace SPARTA_NS;
 using namespace MathConst;
 
 #define MAXLINE 1024
-enum { USP, BGK, ESBGK, SBGK , ESFP ,UFP};
+enum { USP, BGK, ESBGK, SBGK , ESFP ,UFP , MSPD};
 /* ---------------------------------------------------------------------- */
 
 CollideBGK::CollideBGK(SPARTA* sparta, int narg, char** arg) :
@@ -85,6 +85,9 @@ CollideBGK::CollideBGK(SPARTA* sparta, int narg, char** arg) :
     }
     else if (strcmp(arg[2], "ufp") == 0) {
         bgk_mod = UFP;
+    }
+    else if (strcmp(arg[2], "ufp") == 0) {
+        bgk_mod = MSPD;
     }
     else error->all(FLERR, "Illegal collide_bgk command: no such mod");
     if (narg > 4) {
@@ -144,6 +147,7 @@ void CollideBGK::collisions()
     else if (bgk_mod == ESBGK) computeMacro<ESBGK>();
     else if (bgk_mod == ESFP) computeMacro<ESFP>();
     else if (bgk_mod == UFP) computeMacro<UFP>();
+    else if (bgk_mod == MSPD) computeMacro<MSPD>();
 
     if (nglocal > maxglocal) {
         maxglocal = ceil(nglocal * 1.2);
@@ -220,6 +224,7 @@ void CollideBGK::collisions()
         else if (bgk_mod == ESBGK) perform_esbgk(ipart, icell, interMacro);
         else if (bgk_mod == ESFP) perform_esfp(ipart, icell, interMacro);
         else if (bgk_mod == UFP) perform_ufp(ipart, icell, interMacro);
+        else if (bgk_mod == MSPD) perform_mspd(ipart, icell, interMacro);
     }
 
     for (int icell = 0; icell < nglocal; icell++) {
@@ -227,7 +232,10 @@ void CollideBGK::collisions()
             (bgk_mod == USP || bgk_mod == SBGK))
             cinfo[icell].macro.Wmax *= resetWmax;
     }
-    conservV();
+    if (bgk_mod == MSPD) {
+        conservVE();
+    }
+    else conservV();
     print_warning();
 }
 
@@ -244,11 +252,13 @@ void CollideBGK::conservV() {
         memory->destroy(conservMacro);
         memory->create(conservMacro, nmaxconserv, "collideBGK:postmacro");
     }
+    //Initial statistical moment
     for (int i = 0; i < nlocal; ++i) {
         NoCommMacro& nmacro = grid->cinfo[i].macro;
         nmacro.sum_vi[0] = nmacro.sum_vi[1] = nmacro.sum_vi[2] = 0.0;
         nmacro.sum_vij[0] = 0.0;
     }
+    //Statistical macroscopic quantities after collisions.
     for (int ipart = 0; ipart < particle->nlocal; ++ipart) {
         Particle::OnePart& part = particle->particles[ipart];
         NoCommMacro& nmacro = grid->cinfo[part.icell].macro;
@@ -289,6 +299,85 @@ void CollideBGK::conservV() {
         }
     }
 }
+
+//多原子守恒
+void CollideBGK::conservVE() {
+    int nlocal = grid->nlocal;
+    if (!(nmaxconserv >= 0)) error->one(FLERR,
+        "CollideBGK::conservV(): !(nmaxconserv >= 0)");
+    if (nlocal > nmaxconserv) {
+        while (nlocal > nmaxconserv) nmaxconserv += DELTAPART;
+        memory->destroy(conservMacro);
+        memory->create(conservMacro, nmaxconserv, "collideBGK:postmacro");
+    }
+    //Initial statistical moment
+    for (int i = 0; i < nlocal; ++i) {
+        NoCommMacro& nmacro = grid->cinfo[i].macro;
+        nmacro.sum_vi[0] = nmacro.sum_vi[1] = nmacro.sum_vi[2] = 0.0;
+        nmacro.sum_vij[0] = 0.0;
+        nmacro.sum_erot = 0.0;
+        nmacro.sum_evib = 0.0;
+    }
+    //Statistical macroscopic quantities after collisions.
+    for (int ipart = 0; ipart < particle->nlocal; ++ipart) {
+        Particle::OnePart& part = particle->particles[ipart];
+        NoCommMacro& nmacro = grid->cinfo[part.icell].macro;
+        nmacro.sum_erot += part.erot;
+        nmacro.sum_evib += part.evib;
+        for (int i = 0; i < 3; ++i) {
+            nmacro.sum_vi[i] += part.v[i];
+            nmacro.sum_vij[0] += part.v[i] * part.v[i];
+        }
+    }
+    for (int icell = 0; icell < nlocal; ++icell) {
+        conservMacro[icell].done_relaxation = grid->cinfo[icell].macro.do_relaxation;
+        conservMacro[icell].coef = 1;
+        conservMacro[icell].coef_rot = 1;
+        conservMacro[icell].coef_vib = 1;
+        if (!conservMacro[icell].done_relaxation) continue;
+        double np = grid->cinfo[icell].count;
+        double theta = ((double)(np - 1) / np) * grid->cells[icell].macro.Temp / particle->species[0].mass * update->boltz;
+        //转动自由度假设为2
+        double erot_origin = update->boltz * grid->cells[icell].macro.Trot;
+        double evib_origin = update->boltz * particle->species[0].vibtemp[0] / (exp(particle->species[0].vibtemp[0] / grid->cells[icell].macro.Tvib) - 1);
+        if (np <= 3) continue;
+        NoCommMacro& nmacro = grid->cinfo[icell].macro;
+        memcpy(conservMacro[icell].v_origin,
+            grid->cells[icell].macro.v, sizeof(double) * 3);
+        memcpy(conservMacro[icell].v_post,
+            nmacro.sum_vi, sizeof(double) * 3);
+        for (int i = 0; i < 3; ++i) conservMacro[icell].v_post[i] /= np;
+        double theta_post = (nmacro.sum_vij[0]
+            - (nmacro.sum_vi[0] * nmacro.sum_vi[0] + nmacro.sum_vi[1] * nmacro.sum_vi[1]
+                + nmacro.sum_vi[2] * nmacro.sum_vi[2]) / np) / np / 3;
+        double erot_post = nmacro.sum_erot / np;
+        double evib_post = nmacro.sum_evib / np;
+        if (theta > 0 && theta_post > 0) {
+            conservMacro[icell].coef = sqrt(theta / theta_post);
+        }
+        else {
+            error->warning(FLERR, "conservV failed in 1 cell");
+        }
+        if (erot_origin > 0 && evib_origin > 0 && erot_post > 0 && evib_post > 0) {
+            conservMacro[icell].coef_rot = erot_origin / erot_post;
+            conservMacro[icell].coef_vib = evib_origin / evib_post;
+        }
+        else {
+            error->warning(FLERR, "conservE failed in 1 cell");
+        }
+    }
+    for (int ipart = 0; ipart < particle->nlocal; ++ipart) {
+        Particle::OnePart& part = particle->particles[ipart];
+        ConservMacro& cm = conservMacro[part.icell];
+        if (!cm.done_relaxation) continue;
+        part.erot = part.erot * cm.coef_rot;
+        part.evib = part.evib * cm.coef_vib;
+        for (int i = 0; i < 3; ++i) {
+            part.v[i] = (part.v[i] - cm.v_post[i]) * cm.coef + cm.v_origin[i];
+        }
+    }
+}
+
 
 /* ----------------------------------------------------------------------
 * perform per-part relaxation in differen mod: USP-BGK, original BGK, ES-BGK
@@ -390,6 +479,40 @@ void CollideBGK::perform_ufp(Particle::OnePart* ip, int icell, const CommMacro* 
     //ip->v[2] = (ip->v[2] - vm[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2];
 }
 
+void CollideBGK::perform_mspd(Particle::OnePart* ip, int icell, const CommMacro* interMacro)
+{
+    Grid::ChildInfo* cinfo = grid->cinfo;
+    //(0, 1, 2, 3, 4, 5)
+    //(00,11,22,01,02,12)
+    const double* Sij = cinfo[icell].macro.Lij;
+    double Drot = cinfo[icell].macro.Drot;
+    double Dvib = cinfo[icell].macro.Drot;
+    double mass = particle->species[ip->ispecies].mass;
+    const double* vm = grid->cells[icell].macro.v;
+    double vn[3];
+    //double v[3];
+    double cof_d = cinfo[icell].macro.coef_A; //漂移系数
+    double theta = interMacro->Temp / mass * update->boltz;
+    for (int i = 0; i < 3; i++) {
+        //v[i] = ip->v[i];
+        vn[i] = random->gaussian() * sqrt(theta);
+    }
+    //ES-Fokker-Planck:
+    // c(t) = (c(0)-u)*cof_d + sqrt(RT)*gaussian_k*Sik[]+u;
+    // 0 3 4
+    //   1 5
+    //     2
+    ip->v[0] = (ip->v[0]) * cof_d + vn[0] * Sij[0] + vn[1] * Sij[3] + vn[2] * Sij[4] + interMacro->v[0] * (1 - cof_d);
+    ip->v[1] = (ip->v[1]) * cof_d + vn[1] * Sij[1] + vn[2] * Sij[5] + interMacro->v[1] * (1 - cof_d);
+    ip->v[2] = (ip->v[2]) * cof_d + vn[2] * Sij[2] + interMacro->v[2] * (1 - cof_d);
+    //转动振动能更新
+    double erot_sqrt, evib_sqrt;
+    erot_sqrt = sqrt(ip->erot) * cof_d + sqrt(mass * Drot) * random->gaussian();
+    evib_sqrt = sqrt(ip->evib) * cof_d + sqrt(mass * Dvib) * random->gaussian();
+    ip->erot = erot_sqrt * erot_sqrt;
+    ip->evib = evib_sqrt * evib_sqrt;
+}
+
 void CollideBGK::perform_esfp(Particle::OnePart* ip, int icell, const CommMacro* interMacro)
 {
     Grid::ChildInfo* cinfo = grid->cinfo;
@@ -477,7 +600,7 @@ double CollideBGK::attempt_collision(int icell, int, double tao)
     }
     double bgk_nattempt;
     if (bgk_mod == ESBGK) bgk_nattempt = Pr * np * (1 - exp(-tao));
-    else if (bgk_mod == ESFP||bgk_mod == UFP) bgk_nattempt = np;
+    else if (bgk_mod == ESFP||bgk_mod == UFP||bgk_mod == MSPD) bgk_nattempt = np;
     else  bgk_nattempt = np * (1 - exp(-tao));
     return MIN(bgk_nattempt, (double)cinfo[icell].count);
 }
@@ -509,6 +632,10 @@ template < int MOD > void CollideBGK::computeMacro()
         nmacro.sum_vij[0] = nmacro.sum_vij[1] = nmacro.sum_vij[2] = 0.0;
         nmacro.sum_vij[3] = nmacro.sum_vij[4] = nmacro.sum_vij[5] = 0.0;
         nmacro.sum_C2vi[0] = nmacro.sum_C2vi[1] = nmacro.sum_C2vi[2] = 0.0;
+        if (MOD == MSPD) {
+            nmacro.sum_erot = 0.0;
+            nmacro.sum_evib = 0.0;
+        }
     }
 
     // sum vi, vij viij for all child cells I own by iterating over all my part
@@ -533,7 +660,14 @@ template < int MOD > void CollideBGK::computeMacro()
             nmacro.sum_C2vi[0] += C2 * v[0];
             nmacro.sum_C2vi[1] += C2 * v[1];
             nmacro.sum_C2vi[2] += C2 * v[2];
-        }  
+        }
+        if (MOD == MSPD) {
+            nmacro.sum_vij[3] += v[0] * v[1];
+            nmacro.sum_vij[4] += v[0] * v[2];
+            nmacro.sum_vij[5] += v[1] * v[2];
+            nmacro.sum_erot += part.erot;
+            nmacro.sum_evib += part.evib;
+        }
     }
     
     for (int icell = 0; icell < nglocal; icell++)
@@ -558,6 +692,7 @@ template < int MOD > void CollideBGK::computeMacro()
         Particle::Species& 
             species = particle->species[particles[cinfo.first].ispecies];
         double mass = particle->species[particles[cinfo.first].ispecies].mass;
+        double R = update->boltz / mass;
         Params& ps = params[particles[cinfo.first].ispecies];
         double pij[6]{}, qi[3]{};
         double* sum_vij = mean_nmacro.sum_vij;
@@ -568,7 +703,12 @@ template < int MOD > void CollideBGK::computeMacro()
         double V_2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
         double sum_C2 = sum_vij[0] + sum_vij[1] + sum_vij[2];
         // NOTE: temperature is Unbiased estimate
-        cmacro.Temp = ((double)np / (np - 1)) * mass / update->boltz * (sum_C2 / np - V_2) / 3;
+        cmacro.Temp = ((double)np / (np - 1)) * (sum_C2 / np - V_2) / 3.0 / R;
+        //The mass-average rotational and vibrational energy before the collision
+        double mean_erot = mean_nmacro.sum_erot / np / mass;
+        double mean_evib = mean_nmacro.sum_evib / np / mass;
+        double Tvib_origin = ps.T0 / log(1 + ps.T0 * R / MAX(mean_evib, 1e-20));
+
         if (!(cmacro.Temp > ps.T_ref * 0.01)) {
             // if particle is weighted, particles with same velocity maybe exist, thus
             // Temp ≈ 0 due to truncation error of floating point numbers
@@ -578,14 +718,27 @@ template < int MOD > void CollideBGK::computeMacro()
         }
 
         double nrho = cinfo.count * update->fnum * cinfo.weight / cell.dt_weight / cinfo.volume;
-        if (MOD == ESFP|| MOD == UFP) {
+        if (MOD == MSPD) {
+            //计算Pr,转动自由度假设为2
+            mean_nmacro.Pr = 1.0 - 5.0 / (19.0 + 4.0 * mean_evib / Tvib_origin / R);
+            //计算松弛数
+            double Zrot = ps.Zr;//常数松弛数
+            double Zvib = ps.Zv;
+            //pressure divided by viscosity
+            double inv_tau = nrho * update->boltz * pow(ps.T_ref, ps.omega) * pow(cmacro.Temp, 1 - ps.omega) / ps.mu_ref;
+            mean_nmacro.tao = inv_tau * update->dt / cell.dt_weight * mean_nmacro.Pr / 3.0;
+            mean_nmacro.tao_rot = inv_tau * update->dt / cell.dt_weight / MY_PI4 / Zrot;
+            mean_nmacro.tao_vib = inv_tau * update->dt / cell.dt_weight / MY_PI4 / Zvib;
+        }
+        else if (MOD == ESFP|| MOD == UFP) {
             mean_nmacro.tao = nrho * update->boltz * pow(ps.T_ref, ps.omega)
-                * pow(cmacro.Temp, 1 - ps.omega) * update->dt / cell.dt_weight / ps.mu_ref * Pr / 3;
+                * pow(cmacro.Temp, 1 - ps.omega) * update->dt / cell.dt_weight / ps.mu_ref * Pr / 3.0;
         }
         else {
             mean_nmacro.tao = nrho * update->boltz * pow(ps.T_ref, ps.omega)
                 * pow(cmacro.Temp, 1 - ps.omega) * update->dt / cell.dt_weight / ps.mu_ref / 2.0;
         }
+
         double p = 0.0;
         if (MOD == USP|| MOD == SBGK) {
             double factor = ((double)np / (np - 1)) * mass * update->fnum * cinfo.weight / cell.dt_weight / cinfo.volume;
@@ -698,41 +851,136 @@ template < int MOD > void CollideBGK::computeMacro()
             //     2
             //从上到下，从左往右，平方根法分解
  /*           double Lij[6]{};*/
-
-            if (Eij[0] < 0)
-            {
-                mean_nmacro.Lij[0] = 0;
-                mean_nmacro.Lij[3] = 0;
-                mean_nmacro.Lij[4] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
-            if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
-            {
-                mean_nmacro.Lij[1] = 0;
-                mean_nmacro.Lij[5] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
-            if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
-            {
-                mean_nmacro.Lij[2] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
             mean_nmacro.Lij[0] = sqrt(Eij[0]);
             mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
             mean_nmacro.Lij[4] = Eij[4] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[5] = (Eij[5] - mean_nmacro.Lij[4] * mean_nmacro.Lij[3]) / mean_nmacro.Lij[1];
             mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
+            if (Eij[0] < 0)
+            {
+                mean_nmacro.Lij[0] = 0;
+                mean_nmacro.Lij[3] = 0;
+                mean_nmacro.Lij[4] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
+            {
+                mean_nmacro.Lij[1] = 0;
+                mean_nmacro.Lij[5] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
+            {
+                mean_nmacro.Lij[2] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
         }
+        else if (MOD == MSPD) {
+            //漂移，扩散系数
+            double tao = mean_nmacro.tao;
+            double cof_A = exp(-tao);
+            double cof_B = exp(-3 * tao / mean_nmacro.Pr);
+            mean_nmacro.coef_A = cof_A;
+            mean_nmacro.coef_B = cof_B;
+            mean_nmacro.Ttr_origin = mean_nmacro.Ttr_origin * time_ave_coef + cmacro.Temp * (1 - time_ave_coef);
+            //利用landua-teller公式预估下步转动振动能
+            double mean_etr_post, mean_erot_post, mean_evib_post;
+            mean_erot_post = mean_erot * exp(-mean_nmacro.tao_rot) + R * cmacro.Temp * (1 - exp(-mean_nmacro.tao_rot));
+            mean_evib_post = mean_evib * exp(-mean_nmacro.tao_vib) + R * ps.T0 / (exp(ps.T0 / cmacro.Temp) - 1) * (1 - exp(-mean_nmacro.tao_vib));
+            mean_etr_post = 1.5 * R * cmacro.Temp + mean_erot + mean_evib - mean_erot_post - mean_evib_post;
+            cmacro.Temp = mean_etr_post / 1.5 / R;
+            cmacro.Trot = mean_erot_post / R;
+            cmacro.Tvib = ps.T0 / log(1 + ps.T0 * R / MAX(mean_evib_post, 1e-20)); //这三个值直接用于放缩
+
+            double factor = ((double)np / (np - 1)) * mass * update->fnum * cinfo.weight / cell.dt_weight / cinfo.volume;
+            for (int i = 0; i < 3; ++i) {
+                pij[i] = factor * (sum_vij[i] - np * v[i] * v[i]);
+            }
+            pij[3] = factor * (sum_vij[3] - np * v[0] * v[1]);
+            pij[4] = factor * (sum_vij[4] - np * v[0] * v[2]);
+            pij[5] = factor * (sum_vij[5] - np * v[1] * v[2]);
+            p = (pij[0] + pij[1] + pij[2]) / 3.0;
+            mean_nmacro.Ttr_post = mean_nmacro.Ttr_post * time_ave_coef + cmacro.Temp * (1 - time_ave_coef);
+            double coef_Ttr = mean_nmacro.Ttr_origin / mean_nmacro.Ttr_post;
+            // time-average no_dimension_sigma_ij
+            for (int i = 0; i < 3; ++i) {
+                mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
+                    + (pij[i] - p) / p * (1 - time_ave_coef);
+            }
+            for (int i = 3; i < 6; ++i) {
+                mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
+                    + pij[i] / p * (1 - time_ave_coef);
+            }
+            double Eij[6]{};
+            for (int i = 0; i < 3; ++i) {
+                //对角部分考虑碰撞前后的温度变化
+                Eij[i] = (1 - cof_A * cof_A * coef_Ttr)
+                    + mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A * coef_Ttr);
+            }
+            for (int i = 3; i < 6; ++i) {
+                Eij[i] = mean_nmacro.sigma_ij[i] * (cof_B - cof_A * cof_A * coef_Ttr);
+            }
+            //cholesky分解
+            // cholesky分解满足线性关系，可以先分解后平均
+            // 0 3 4
+            //   1 5
+            //     2
+            //从上到下，从左往右，平方根法分解
+    /*           double Lij[6]{};*/
+            mean_nmacro.Lij[0] = sqrt(Eij[0]);
+            mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
+            mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
+            mean_nmacro.Lij[4] = Eij[4] / mean_nmacro.Lij[0];
+            mean_nmacro.Lij[5] = (Eij[5] - mean_nmacro.Lij[4] * mean_nmacro.Lij[3]) / mean_nmacro.Lij[1];
+            mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
+            if (Eij[0] < 0)
+            {
+                mean_nmacro.Lij[0] = 0;
+                mean_nmacro.Lij[3] = 0;
+                mean_nmacro.Lij[4] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
+            {
+                mean_nmacro.Lij[1] = 0;
+                mean_nmacro.Lij[5] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
+            {
+                mean_nmacro.Lij[2] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            //计算转动和振动模态的扩散系数
+            mean_nmacro.Drot = mean_erot_post - mean_erot * cof_A * cof_A;
+            mean_nmacro.Dvib = mean_evib_post - mean_evib * cof_A * cof_A;
+        }
+
         else if (MOD == UFP) {
 
             //漂移，扩散系数
@@ -776,39 +1024,42 @@ template < int MOD > void CollideBGK::computeMacro()
             //     2
             //从上到下，从左往右，平方根法分解
  /*           double Lij[6]{};*/
-            if (Eij[0] < 0)
-            {
-                mean_nmacro.Lij[0] = 0;
-                mean_nmacro.Lij[3] = 0;
-                mean_nmacro.Lij[4] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
-            if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
-            {
-                mean_nmacro.Lij[1] = 0;
-                mean_nmacro.Lij[5] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
-            if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
-            {
-                mean_nmacro.Lij[2] = 0;
-                char str[128];
-                sprintf(str, "cholesky decomposition failed in 1 cell");
-                error->warning(FLERR, str);
-            }
-
             mean_nmacro.Lij[0] = sqrt(Eij[0]);
             mean_nmacro.Lij[3] = Eij[3] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[1] = sqrt(Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3]);
             mean_nmacro.Lij[4] = Eij[4] / mean_nmacro.Lij[0];
             mean_nmacro.Lij[5] = (Eij[5] - mean_nmacro.Lij[4] * mean_nmacro.Lij[3]) / mean_nmacro.Lij[1];
             mean_nmacro.Lij[2] = sqrt(Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5]);
+            if (Eij[0] < 0)
+            {
+                mean_nmacro.Lij[0] = 0;
+                mean_nmacro.Lij[3] = 0;
+                mean_nmacro.Lij[4] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[1] - mean_nmacro.Lij[3] * mean_nmacro.Lij[3] < 0)
+            {
+                mean_nmacro.Lij[1] = 0;
+                mean_nmacro.Lij[5] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
+            else if (Eij[2] - mean_nmacro.Lij[4] * mean_nmacro.Lij[4] - mean_nmacro.Lij[5] * mean_nmacro.Lij[5] < 0)
+            {
+                mean_nmacro.Lij[2] = 0;
+                mean_nmacro.coef_A = 1;
+                mean_nmacro.coef_B = 0;
+                char str[128];
+                sprintf(str, "cholesky decomposition failed in 1 cell");
+                error->warning(FLERR, str);
+            }
         }
     }
 
@@ -845,6 +1096,7 @@ void CollideBGK::read_param_file(char* fname)
     // all other lines must have at least REQWORDS, which depends on VARIABLE flag
 
     int REQWORDS = 4;
+    if (bgk_mod == MSPD) REQWORDS = 7;
     char** words = new char* [REQWORDS]; 
     char line[MAXLINE];
     int isp;
@@ -866,6 +1118,11 @@ void CollideBGK::read_param_file(char* fname)
             params[isp].mu_ref  = atof(words[1]);
             params[isp].omega = atof(words[2]);
             params[isp].T_ref  = atof(words[3]);
+            if (bgk_mod == MSPD) {
+                params[isp].Zr = atof(words[4]);
+                params[isp].Zv = atof(words[5]);
+                params[isp].T0 = atof(words[6]);
+            }
         }
     }
 

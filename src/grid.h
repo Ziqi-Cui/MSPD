@@ -25,7 +25,9 @@ namespace SPARTA_NS {
 
 struct CommMacro {
     double v[3];
-    double Temp;
+    double Temp;    //translational temperature
+    double Trot;    //rotational temperature
+    double Tvib;    //vibrational temperature
 };
 struct NoCommMacro {
     int do_relaxation;
@@ -33,11 +35,21 @@ struct NoCommMacro {
                        //(0, 1, 2, 3, 4, 5)
     double sum_vij[6]; //(00,11,22,01,02,12)
     double sum_C2vi[3];
+    double sum_erot;   //grid rotational energy sum
+    double sum_evib;   //grid vibrational energy sum
+
     double sigma_ij[6]; // shear stress, time-ave (00,11,22,01,02,12)
-    double Lij[6];      //Fokker-Planck collide
+    double Ttr_origin;   //平动扩散矩阵的对角部分系数
+    double Ttr_post;   //平动扩散矩阵的对角部分系数
+    double Lij[6];      //Fokker-Planck collide velocity
+    double Drot;        //Fokker-Planck rotational coef
+    double Dvib;        //Fokker-Planck vibrational coef
+
     double qi[3]; // heat flux ,time-ave
     double Wmax;
     double coef_A, coef_B, tao;
+    double tao_rot, tao_vib;    //rotational-vibrational relax time
+    double Pr;              //Temperature-depend Prandtl number
 };
 
 class Grid : protected Pointers {

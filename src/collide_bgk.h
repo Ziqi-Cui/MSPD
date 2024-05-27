@@ -64,18 +64,24 @@ class CollideBGK : public Collide {
   void perform_sbgk(Particle::OnePart*, int, const class CommMacro*);
   void perform_esfp(Particle::OnePart*, int, const class CommMacro*);
   void perform_ufp(Particle::OnePart*, int, const class CommMacro*);
+  void perform_mspd(Particle::OnePart*, int, const class CommMacro*);
   void conservV();
+  void conservVE();
   double extract(int, int, const char*) { return 0.0; };
 
   struct Params {             // BGK model parameters
       double mu_ref;          // reference viscosity
       double omega;           // mu ~ T^omega
       double T_ref;           // reference temperature
+      double Zr, Zv;          // mode relax number
+      double d_ref;           
+      double T0;               //vibrational characteristic temperture
   };
   struct ConservMacro
   {
       int done_relaxation;
       double coef;
+      double coef_rot, coef_vib;
       double v_origin[3], v_post[3];
   };
 
@@ -98,6 +104,7 @@ class CollideBGK : public Collide {
   double Pr;                  // Prantl number
   double time_ave_coef;
   double alpha_Pc;
+  int Rot_mod, Vib_mod;       //Identifier for rotational-vibrational mode
 
   bool* relax_flag;
   int nplocalmax;
