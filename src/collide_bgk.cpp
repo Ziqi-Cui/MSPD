@@ -86,7 +86,7 @@ CollideBGK::CollideBGK(SPARTA* sparta, int narg, char** arg) :
     else if (strcmp(arg[2], "ufp") == 0) {
         bgk_mod = UFP;
     }
-    else if (strcmp(arg[2], "ufp") == 0) {
+    else if (strcmp(arg[2], "mspd") == 0) {
         bgk_mod = MSPD;
     }
     else error->all(FLERR, "Illegal collide_bgk command: no such mod");
@@ -210,6 +210,7 @@ void CollideBGK::collisions()
         Particle::OnePart* ipart = &particles[i];
         int icell = ipart->icell;
         const CommMacro* interMacro = &grid->cells[icell].macro;
+        //插值
         if (interpolate_flag) {
             interMacro = grid->gridCommMacro->interpolation(ipart);
             if ((!interMacro) || (!(interMacro->Temp > 0))) {
@@ -361,6 +362,11 @@ void CollideBGK::conservVE() {
         if (erot_origin > 0 && evib_origin > 0 && erot_post > 0 && evib_post > 0) {
             conservMacro[icell].coef_rot = erot_origin / erot_post;
             conservMacro[icell].coef_vib = evib_origin / evib_post;
+            ////调试
+            //char str[512];
+            //sprintf(str, "erot_origin = %.4e , erot_post = %.4e, evib_o = %.4e, evib_p = %.4e, T_rot_conserv = %.4f,T_vib_conserv = %.4f",
+            //    erot_origin, erot_post, evib_origin, evib_post, grid->cells[icell].macro.Trot, grid->cells[icell].macro.Tvib);
+            //error->warning(FLERR, str);
         }
         else {
             error->warning(FLERR, "conservE failed in 1 cell");
@@ -486,7 +492,7 @@ void CollideBGK::perform_mspd(Particle::OnePart* ip, int icell, const CommMacro*
     //(00,11,22,01,02,12)
     const double* Sij = cinfo[icell].macro.Lij;
     double Drot = cinfo[icell].macro.Drot;
-    double Dvib = cinfo[icell].macro.Drot;
+    double Dvib = cinfo[icell].macro.Dvib;
     double mass = particle->species[ip->ispecies].mass;
     const double* vm = grid->cells[icell].macro.v;
     double vn[3];
@@ -721,6 +727,11 @@ template < int MOD > void CollideBGK::computeMacro()
         if (MOD == MSPD) {
             //计算Pr,转动自由度假设为2
             mean_nmacro.Pr = 1.0 - 5.0 / (19.0 + 4.0 * mean_evib / Tvib_origin / R);
+            ////调试
+            //char str[128];
+            //sprintf(str, "Pr_num = %.4f, Tvib_origin = %.4f",
+            //    mean_nmacro.Pr, Tvib_origin);
+            //error->warning(FLERR, str);
             //计算松弛数
             double Zrot = ps.Zr;//常数松弛数
             double Zvib = ps.Zv;
@@ -904,6 +915,13 @@ template < int MOD > void CollideBGK::computeMacro()
             cmacro.Temp = mean_etr_post / 1.5 / R;
             cmacro.Trot = mean_erot_post / R;
             cmacro.Tvib = ps.T0 / log(1 + ps.T0 * R / MAX(mean_evib_post, 1e-20)); //这三个值直接用于放缩
+            ////调试
+            //double evib_tr = R * ps.T0 / (exp(ps.T0 / cmacro.Temp) - 1);
+            //double weight_vib = exp(-mean_nmacro.tao_vib);
+            //char str2[256];
+            //sprintf(str2, "Drot = %.4f , mean_erot_post = %.4f,mean_erot = %.4f,Dvib = %.4f, mean_evib_post = %.4f, mean_evib = %.4f, mean_evib_tr=%.4f, weight_vib = %.4f",
+            //    mean_nmacro.Drot, mean_erot_post, mean_erot, mean_nmacro.Dvib, mean_evib_post, mean_evib, evib_tr, weight_vib);
+            //error->warning(FLERR, str2);
 
             double factor = ((double)np / (np - 1)) * mass * update->fnum * cinfo.weight / cell.dt_weight / cinfo.volume;
             for (int i = 0; i < 3; ++i) {
@@ -979,6 +997,11 @@ template < int MOD > void CollideBGK::computeMacro()
             //计算转动和振动模态的扩散系数
             mean_nmacro.Drot = mean_erot_post - mean_erot * cof_A * cof_A;
             mean_nmacro.Dvib = mean_evib_post - mean_evib * cof_A * cof_A;
+            ////调试
+            //char str1[256];
+            //sprintf(str1, "Drot = %.4f , mean_erot_post = %.4f,mean_erot = %.4f,Dvib = %.4f, mean_evib_post = %.4f, mean_evib = %.4f", 
+            //    mean_nmacro.Drot, mean_erot_post, mean_erot, mean_nmacro.Dvib, mean_evib_post, mean_evib);
+            //error->warning(FLERR, str1);
         }
 
         else if (MOD == UFP) {

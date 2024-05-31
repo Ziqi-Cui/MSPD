@@ -1089,7 +1089,7 @@ void Particle::read_species_file()
   // skip blank lines or comment lines starting with '#'
   // all other lines must have NWORDS
 
-  int NWORDS = 10;
+  int NWORDS = 12;
   char **words = new char*[NWORDS];
   char line[MAXLINE],copy[MAXLINE];
 
@@ -1126,6 +1126,8 @@ void Particle::read_species_file()
     fsp->vibtemp[0] = atof(words[7]);
     fsp->specwt = atof(words[8]);
     fsp->charge = atof(words[9]);
+    fsp->Zrot = atof(words[10]);
+    fsp->Zvib = atof(words[11]);
 
     if (fsp->rotdof > 0 || fsp->vibdof > 0) fsp->internaldof = 1;
     else fsp->internaldof = 0;
