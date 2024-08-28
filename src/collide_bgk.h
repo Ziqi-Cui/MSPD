@@ -67,6 +67,7 @@ class CollideBGK : public Collide {
   void perform_mspd(Particle::OnePart*, int, const class CommMacro*);
   void conservV();
   void conservVE();
+  void conservVED();
   double extract(int, int, const char*) { return 0.0; };
 
   struct Params {             // BGK model parameters
@@ -80,6 +81,7 @@ class CollideBGK : public Collide {
   struct ConservMacro
   {
       int done_relaxation;
+      int Nvib_remain, sign_N;
       double coef;
       double coef_rot, coef_vib;
       double v_origin[3], v_post[3];
@@ -104,7 +106,9 @@ class CollideBGK : public Collide {
   double Pr;                  // Prantl number
   double time_ave_coef;
   double alpha_Pc;
-  int Rot_mod, Vib_mod;       //Identifier for rotational-vibrational mode
+  int Rot_mod, Vib_mod;       // Identifier for rotational-vibrational mode
+  int vib_energy_flag;        // 1/0 = discrete/smooth vibrate energy
+  int* Nvibp;                 // 每个粒子需要补充的离散能级数
 
   bool* relax_flag;
   int nplocalmax;

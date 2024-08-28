@@ -63,6 +63,8 @@ CollideBGK::CollideBGK(SPARTA* sparta, int narg, char** arg) :
     nparams = particle->nspecies;
     resetWmax = 0.99;
     Pr = 0.666667;
+    Rot_mod = Vib_mod = 0;
+    vib_energy_flag = 0;
     alpha_Pc = 0.1;
     interpolate_flag = 1;
     if (nparams == 0)
@@ -105,6 +107,7 @@ CollideBGK::CollideBGK(SPARTA* sparta, int narg, char** arg) :
     resetWmax_flag = NULL;
     nplocalmax = 0;
     relax_flag = NULL;
+    Nvibp = NULL;
 }
 
 
@@ -234,7 +237,8 @@ void CollideBGK::collisions()
             cinfo[icell].macro.Wmax *= resetWmax;
     }
     if (bgk_mod == MSPD) {
-        conservVE();
+        if (vib_energy_flag == 0)conservVE();
+        else conservVED();
     }
     else conservV();
     print_warning();
@@ -301,7 +305,7 @@ void CollideBGK::conservV() {
     }
 }
 
-//多原子守恒
+//多原子守恒,振动能连续
 void CollideBGK::conservVE() {
     int nlocal = grid->nlocal;
     if (!(nmaxconserv >= 0)) error->one(FLERR,
@@ -364,8 +368,8 @@ void CollideBGK::conservVE() {
             conservMacro[icell].coef_vib = evib_origin / evib_post;
             ////调试
             //char str[512];
-            //sprintf(str, "erot_origin = %.4e , erot_post = %.4e, evib_o = %.4e, evib_p = %.4e, T_rot_conserv = %.4f,T_vib_conserv = %.4f",
-            //    erot_origin, erot_post, evib_origin, evib_post, grid->cells[icell].macro.Trot, grid->cells[icell].macro.Tvib);
+            //sprintf(str, "cof_v = %.4f , cof_rot = %.4f, cof_vib = %.4f",
+            //    conservMacro[icell].coef, conservMacro[icell].coef_rot, conservMacro[icell].coef_vib);
             //error->warning(FLERR, str);
         }
         else {
@@ -383,6 +387,101 @@ void CollideBGK::conservVE() {
         }
     }
 }
+
+//多原子守恒,振动能离散
+void CollideBGK::conservVED() {
+    int nlocal = grid->nlocal;
+    if (!(nmaxconserv >= 0)) error->one(FLERR,
+        "CollideBGK::conservV(): !(nmaxconserv >= 0)");
+    if (nlocal > nmaxconserv) {
+        while (nlocal > nmaxconserv) nmaxconserv += DELTAPART;
+        memory->destroy(conservMacro);
+        memory->create(conservMacro, nmaxconserv, "collideBGK:postmacro");
+    }
+    //Initial statistical moment
+    for (int i = 0; i < nlocal; ++i) {
+        NoCommMacro& nmacro = grid->cinfo[i].macro;
+        nmacro.sum_vi[0] = nmacro.sum_vi[1] = nmacro.sum_vi[2] = 0.0;
+        nmacro.sum_vij[0] = 0.0;
+        nmacro.sum_erot = 0.0;
+        nmacro.sum_evib = 0.0;
+    }
+    //Statistical macroscopic quantities after collisions.
+    for (int ipart = 0; ipart < particle->nlocal; ++ipart) {
+        Particle::OnePart& part = particle->particles[ipart];
+        NoCommMacro& nmacro = grid->cinfo[part.icell].macro;
+        nmacro.sum_erot += part.erot;
+        nmacro.sum_evib += part.evib;
+        for (int i = 0; i < 3; ++i) {
+            nmacro.sum_vi[i] += part.v[i];
+            nmacro.sum_vij[0] += part.v[i] * part.v[i];
+        }
+    }
+    for (int icell = 0; icell < nlocal; ++icell) {
+        conservMacro[icell].done_relaxation = grid->cinfo[icell].macro.do_relaxation;
+        conservMacro[icell].coef = 1;
+        conservMacro[icell].sign_N = 1;
+        conservMacro[icell].coef_rot = 1;
+        if (!conservMacro[icell].done_relaxation) continue;
+        int np = grid->cinfo[icell].count;
+        double theta = ((double)(np - 1) / np) * grid->cells[icell].macro.Temp / particle->species[0].mass * update->boltz;
+        //转动自由度假设为2
+        double vib_eng = update->boltz * particle->species[0].vibtemp[0];
+        double erot_origin = update->boltz * grid->cells[icell].macro.Trot;
+        int Nvib_origin = static_cast<int> ((np / (exp(particle->species[0].vibtemp[0] 
+            / grid->cells[icell].macro.Tvib) - 1))+random->uniform());
+        if (np <= 3) continue;
+        NoCommMacro& nmacro = grid->cinfo[icell].macro;
+        memcpy(conservMacro[icell].v_origin,
+            grid->cells[icell].macro.v, sizeof(double) * 3);
+        memcpy(conservMacro[icell].v_post,
+            nmacro.sum_vi, sizeof(double) * 3);
+        for (int i = 0; i < 3; ++i) conservMacro[icell].v_post[i] /= np;
+        double theta_post = (nmacro.sum_vij[0]
+            - (nmacro.sum_vi[0] * nmacro.sum_vi[0] + nmacro.sum_vi[1] * nmacro.sum_vi[1]
+                + nmacro.sum_vi[2] * nmacro.sum_vi[2]) / np) / np / 3;
+        double erot_post = nmacro.sum_erot / np;
+        //振动总能级守恒
+        int Nvib_post = static_cast<int>(nmacro.sum_evib / vib_eng + 0.1);
+        conservMacro[icell].Nvib_remain = Nvib_origin - Nvib_post;
+        if (conservMacro[icell].Nvib_remain < 0) conservMacro[icell].sign_N = -1;
+        conservMacro[icell].Nvib_remain *= conservMacro[icell].sign_N;
+        //平动转动放缩系数
+        if (theta > 0 && theta_post > 0) {
+            conservMacro[icell].coef = sqrt(theta / theta_post);
+        }
+        else {
+            error->warning(FLERR, "conservV failed in 1 cell");
+        }
+        if (erot_origin > 0 && erot_post > 0) {
+            conservMacro[icell].coef_rot = erot_origin / erot_post;
+        }
+        else {
+            error->warning(FLERR, "conservE failed in 1 cell");
+        }
+    }
+    for (int ipart = 0; ipart < particle->nlocal; ++ipart) {
+        Particle::OnePart& part = particle->particles[ipart];
+        ConservMacro& cm = conservMacro[part.icell];
+        double vib_eng = update->boltz * particle->species[0].vibtemp[0];
+        if (!cm.done_relaxation) continue;
+        if (cm.Nvib_remain) {
+            if (random->uniform() > 0.5) {
+                double evib_post = part.evib + vib_eng * cm.sign_N;
+                if (evib_post >= 0) {
+                    part.evib = evib_post;
+                    cm.Nvib_remain -= 1;
+                }
+            }
+        }
+        part.erot = part.erot * cm.coef_rot;
+        for (int i = 0; i < 3; ++i) {
+            part.v[i] = (part.v[i] - cm.v_post[i]) * cm.coef + cm.v_origin[i];
+        }
+    }
+}
+
+
 
 
 /* ----------------------------------------------------------------------
@@ -494,6 +593,7 @@ void CollideBGK::perform_mspd(Particle::OnePart* ip, int icell, const CommMacro*
     double Drot = cinfo[icell].macro.Drot;
     double Dvib = cinfo[icell].macro.Dvib;
     double mass = particle->species[ip->ispecies].mass;
+    double vib_eng = update->boltz * particle->species[ip->ispecies].vibtemp[0];  //离散振动能间隔
     const double* vm = grid->cells[icell].macro.v;
     double vn[3];
     //double v[3];
@@ -516,7 +616,13 @@ void CollideBGK::perform_mspd(Particle::OnePart* ip, int icell, const CommMacro*
     erot_sqrt = sqrt(ip->erot) * cof_d + sqrt(mass * Drot) * random->gaussian();
     evib_sqrt = sqrt(ip->evib) * cof_d + sqrt(mass * Dvib) * random->gaussian();
     ip->erot = erot_sqrt * erot_sqrt;
-    ip->evib = evib_sqrt * evib_sqrt;
+    if (vib_energy_flag == 1) {
+        ip->evib = vib_eng * static_cast<int> ((evib_sqrt * evib_sqrt / vib_eng + random->uniform()));
+        //char str[256];
+        //sprintf(str, "evib_smooth = %e, vib_eng = %e ,ip->evib = %e, nengji = %d", evib_sqrt * evib_sqrt, vib_eng, ip->evib, static_cast<int> ((ip->evib / vib_eng )));
+        //error->warning(FLERR, str);
+    }
+    else ip->evib = evib_sqrt * evib_sqrt;
 }
 
 void CollideBGK::perform_esfp(Particle::OnePart* ip, int icell, const CommMacro* interMacro)
@@ -732,14 +838,38 @@ template < int MOD > void CollideBGK::computeMacro()
             //sprintf(str, "Pr_num = %.4f, Tvib_origin = %.4f",
             //    mean_nmacro.Pr, Tvib_origin);
             //error->warning(FLERR, str);
-            //计算松弛数
-            double Zrot = ps.Zr;//常数松弛数
-            double Zvib = ps.Zv;
+            //计算松弛数 cmacro.Temp温度应该用真实的物理温度，此处在MSP时需要修改
             //pressure divided by viscosity
             double inv_tau = nrho * update->boltz * pow(ps.T_ref, ps.omega) * pow(cmacro.Temp, 1 - ps.omega) / ps.mu_ref;
+            double Zrot, Zvib;
+            // (mod==0: consistant collision number; mod==1: temperature-dependent collision number)
+            if (Rot_mod < 0.5) Zrot = ps.Zr;
+            //parker公式的系数为：(pi^1.5)/2=2.7842,(pi+pi^2/4)=5.609,Zrot^inf=23.5
+            else {
+                double inv_Ttr = 91.5 / cmacro.Temp;
+                Zrot = 23.5 / (1 + 2.784 * sqrt(inv_Ttr) + 5.609 * inv_Ttr);
+            }
+            if (Vib_mod < 0.5) Zvib = ps.Zv;
+            else {
+                // The Millikan&CWhite Model for vibrational relaxation.Boyd, p453.
+                double tau_MW = 9.1 / pow(cmacro.Temp, ps.omega) * exp(220.0 / pow(cmacro.Temp, 1.0 / 3.0)) * MY_PI4 / inv_tau;
+                //High temperature correction by Haas-Boyd's model, p454, Eq.(7.16)
+                double sigma_vib = 5.81e-21;
+                double tau_HT = sqrt(MY_PI / (8.0 * cmacro.Temp * R)) / (sigma_vib * nrho);
+                // add the high temperature correction
+                Zvib = (tau_MW + tau_HT) * inv_tau / MY_PI4;
+                //char str[128];
+                //sprintf(str, "Ttr = %.4f, tau_MW = %.4e,tau_HT = %.4e,", cmacro.Temp, tau_MW, tau_HT);
+                //error->warning(FLERR, str);
+            }
             mean_nmacro.tao = inv_tau * update->dt / cell.dt_weight * mean_nmacro.Pr / 3.0;
-            mean_nmacro.tao_rot = inv_tau * update->dt / cell.dt_weight / MY_PI4 / Zrot;
+            mean_nmacro.tao_rot = inv_tau * update->dt / cell.dt_weight / MY_PI4 / Zrot;//pi/4是碰撞时间定义的区别导致的
             mean_nmacro.tao_vib = inv_tau * update->dt / cell.dt_weight / MY_PI4 / Zvib;
+            //此处需要测试一下公式对不对
+            //调试
+            //char str[128];
+            //sprintf(str, "Zrot = %.4f, Zvib = %.4e, tao_rot = %.4e, tao_vib = %.4e", Zrot, Zvib, mean_nmacro.tao_rot, mean_nmacro.tao_vib);
+            //error->warning(FLERR, str);
         }
         else if (MOD == ESFP|| MOD == UFP) {
             mean_nmacro.tao = nrho * update->boltz * pow(ps.T_ref, ps.omega)
@@ -906,12 +1036,12 @@ template < int MOD > void CollideBGK::computeMacro()
             double cof_B = exp(-3 * tao / mean_nmacro.Pr);
             mean_nmacro.coef_A = cof_A;
             mean_nmacro.coef_B = cof_B;
-            mean_nmacro.Ttr_origin = mean_nmacro.Ttr_origin * time_ave_coef + cmacro.Temp * (1 - time_ave_coef);
+            double Ttr_origin = cmacro.Temp;
             //利用landua-teller公式预估下步转动振动能
             double mean_etr_post, mean_erot_post, mean_evib_post;
-            mean_erot_post = mean_erot * exp(-mean_nmacro.tao_rot) + R * cmacro.Temp * (1 - exp(-mean_nmacro.tao_rot));
-            mean_evib_post = mean_evib * exp(-mean_nmacro.tao_vib) + R * ps.T0 / (exp(ps.T0 / cmacro.Temp) - 1) * (1 - exp(-mean_nmacro.tao_vib));
-            mean_etr_post = 1.5 * R * cmacro.Temp + mean_erot + mean_evib - mean_erot_post - mean_evib_post;
+            mean_erot_post = mean_erot * exp(-mean_nmacro.tao_rot) + R * Ttr_origin * (1 - exp(-mean_nmacro.tao_rot));
+            mean_evib_post = mean_evib * exp(-mean_nmacro.tao_vib) + R * ps.T0 / (exp(ps.T0 / Ttr_origin) - 1) * (1 - exp(-mean_nmacro.tao_vib));
+            mean_etr_post = 1.5 * R * Ttr_origin + mean_erot + mean_evib - mean_erot_post - mean_evib_post;
             cmacro.Temp = mean_etr_post / 1.5 / R;
             cmacro.Trot = mean_erot_post / R;
             cmacro.Tvib = ps.T0 / log(1 + ps.T0 * R / MAX(mean_evib_post, 1e-20)); //这三个值直接用于放缩
@@ -931,8 +1061,8 @@ template < int MOD > void CollideBGK::computeMacro()
             pij[4] = factor * (sum_vij[4] - np * v[0] * v[2]);
             pij[5] = factor * (sum_vij[5] - np * v[1] * v[2]);
             p = (pij[0] + pij[1] + pij[2]) / 3.0;
-            mean_nmacro.Ttr_post = mean_nmacro.Ttr_post * time_ave_coef + cmacro.Temp * (1 - time_ave_coef);
-            double coef_Ttr = mean_nmacro.Ttr_origin / mean_nmacro.Ttr_post;
+
+            double coef_Ttr = Ttr_origin / cmacro.Temp;
             // time-average no_dimension_sigma_ij
             for (int i = 0; i < 3; ++i) {
                 mean_nmacro.sigma_ij[i] = mean_nmacro.sigma_ij[i] * time_ave_coef
@@ -1281,8 +1411,20 @@ void CollideBGKModify::command(int narg, char** arg)
             else error->all(FLERR, "Illegal collide_bgk_modify command");
             iarg += 2;
         }
+        else if (strcmp(arg[iarg], "relax_mod") == 0) {
+            if (iarg + 3 > narg) error->all(FLERR, "Illegal collide_bgk_modify command");
+            collideBGK->Rot_mod = atof(arg[iarg + 1]);
+            collideBGK->Vib_mod = atof(arg[iarg + 2]);
+            iarg += 3;
+        }
+        else if (strcmp(arg[iarg], "vib_energy") == 0) {
+            if (iarg + 2 > narg) error->all(FLERR, "Illegal collide_bgk_modify command");
+            if (strcmp(arg[iarg + 1], "discrete") == 0) collideBGK->vib_energy_flag = 1;
+            else if (strcmp(arg[iarg + 1], "smooth") == 0) collideBGK->vib_energy_flag = 0;
+            else error->all(FLERR, "Illegal collide_bgk_modify command");
+            iarg += 2;
+        }
         else error->all(FLERR, "Illegal collide_bgk_modify command");
-
     }
 }
 
