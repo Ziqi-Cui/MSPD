@@ -118,20 +118,20 @@ void ReactBird::init()
     OneReaction *r = &rlist[m];
     r->active = 1;
 
-    if (r->type == RECOMBINATION && recombflag_user == 0) {
+    if (r->type == RECOMBINATION && recombflag_user == 0) {  //针对于强制关掉复合反应的情况
       r->active = 0;
       continue;
     }
 
-    for (int i = 0; i < r->nreactant; i++) {
-      r->reactants[i] = particle->find_species(r->id_reactants[i]);
+    for (int i = 0; i < r->nreactant; i++) { //根据反应物列表判断反应是否发生
+      r->reactants[i] = particle->find_species(r->id_reactants[i]);  //return index of ID in list of species IDs
       if (r->reactants[i] < 0) {
         r->active = 0;
         break;
       }
     }
-
-    for (int i = 0; i < r->nproduct; i++) {
+    
+    for (int i = 0; i < r->nproduct; i++) {  //确定产物列表判断反应是否发生
       r->products[i] = particle->find_species(r->id_products[i]);
       if (r->products[i] < 0) {
 
@@ -140,7 +140,7 @@ void ReactBird::init()
         if (r->type == RECOMBINATION && i == 1) {
           if (strcmp(r->id_products[i],"atom") == 0) {
             r->products[i] = -1;
-            continue;
+            continue;                                           //产物显式为两个的情况包含"atom"、"mol"两种特殊情况
           } else if (strcmp(r->id_products[i],"mol") == 0) {
             r->products[i] = -2;
             continue;
@@ -228,7 +228,7 @@ void ReactBird::init()
     // symmetry parameter
 
     double epsilon = 1.0;
-    if (isp == jsp) epsilon = 2.0;
+    if (isp == jsp) epsilon = 2.0;  //对称因子
 
     double diam = collide->extract(isp,jsp,"diam");
     double omega = collide->extract(isp,jsp,"omega");
@@ -246,11 +246,11 @@ void ReactBird::init()
     // add additional coeff for effective DOF
 
     double c1 = MY_PIS*epsilon*r->coeff[2]/(2.0*sigma) *
-      sqrt(mr/(2.0*update->boltz*tref)) *
+      sqrt(mr/(2.0*update->boltz*tref)) *                              //c1参考Bird127页公式，不包含gamma函数项
       pow(tref,1.0-omega)/pow(update->boltz,r->coeff[3]-1.0+omega);
     double c2 = r->coeff[3] - 1.0 + omega;
 
-    r->coeff[2] = c1;
+    r->coeff[2] = c1;     //对coeff进行重新赋值，用于react_tce程序
     r->coeff[5] = omega;
 
     // add additional coeff for post-collision effective omega

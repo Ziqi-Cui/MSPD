@@ -2175,8 +2175,8 @@ double Variable::evaluate(char *str, Tree **tree)
           else if (opprevious == MULTIPLY)
             argstack[nargstack++] = value1 * value2;
           else if (opprevious == DIVIDE) {
-            if (value2 == 0.0)
-              error->one(FLERR,"Divide by 0 in variable formula");
+              if (value2 == 0.0)
+                  value2 = 1; //error->one(FLERR,"Divide by 0 in variable formula");
             argstack[nargstack++] = value1 / value2;
           } else if (opprevious == MODULO) {
             if (value2 == 0.0)
@@ -2301,7 +2301,7 @@ double Variable::collapse_tree(Tree *tree)
     arg2 = collapse_tree(tree->right);
     if (tree->left->type != VALUE || tree->right->type != VALUE) return 0.0;
     tree->type = VALUE;
-    if (arg2 == 0.0) error->one(FLERR,"Divide by 0 in variable formula");
+    if (arg2 == 0.0) arg2 = 1; //error->one(FLERR,"Divide by 0 in variable formula");
     tree->value = arg1 / arg2;
     return tree->value;
   }
@@ -2729,7 +2729,7 @@ double Variable::eval_tree(Tree *tree, int i)
     return eval_tree(tree->left,i) * eval_tree(tree->right,i);
   if (tree->type == DIVIDE) {
     double denom = eval_tree(tree->right,i);
-    if (denom == 0.0) error->one(FLERR,"Divide by 0 in variable formula");
+    if (denom == 0.0) denom = 1.0;  //error->one(FLERR, "Divide by 0 in variable formula");
     return eval_tree(tree->left,i) / denom;
   }
   if (tree->type == MODULO) {

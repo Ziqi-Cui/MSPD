@@ -1032,7 +1032,7 @@ double Particle::erot(int isp, double temp_thermal, RanKnuth *erandom)
       particle->species[isp].rottemp[0];
     eng = irot * update->boltz * particle->species[isp].rottemp[0];
   } else if (rotstyle == SMOOTH && species[isp].rotdof == 2) {
-    eng = -log(erandom->uniform()) * update->boltz * temp_thermal;
+    eng = -log(erandom->uniform()) * update->boltz * temp_thermal; //boyd(2017), A.23
   } else {
     a = 0.5*particle->species[isp].rotdof-1.0;
     while (1) {
@@ -1070,10 +1070,10 @@ double Particle::evib(int isp, double temp_thermal, RanKnuth *erandom)
   if (vibstyle == DISCRETE && species[isp].vibdof == 2) {
     int ivib = -log(erandom->uniform()) * temp_thermal /
       particle->species[isp].vibtemp[0];
-    eng = ivib * update->boltz * particle->species[isp].vibtemp[0];
+    eng = ivib * update->boltz * particle->species[isp].vibtemp[0];  //Boyd(2017) A.24
   } else if (vibstyle == SMOOTH || species[isp].vibdof >= 2) {
     if (species[isp].vibdof == 2)
-      eng = -log(erandom->uniform()) * update->boltz * temp_thermal;
+      eng = -log(erandom->uniform()) * update->boltz * temp_thermal; //这个公式中，振动能完全激发，振动自由度固定为2
     else if (species[isp].vibdof > 2) {
       a = 0.5*particle->species[isp].vibdof-1.;
       while (1) {
@@ -1101,7 +1101,7 @@ void Particle::read_species_file()
   // skip blank lines or comment lines starting with '#'
   // all other lines must have NWORDS
 
-  int NWORDS = 10;
+  int NWORDS = 12;  //modify: 添加数据，容纳相异组分间的转动、振动松弛数
   char **words = new char*[NWORDS];
   char line[MAXLINE],copy[MAXLINE];
 
@@ -1138,6 +1138,8 @@ void Particle::read_species_file()
     fsp->vibtemp[0] = atof(words[7]);
     fsp->specwt = atof(words[8]);
     fsp->charge = atof(words[9]);
+    fsp->rotrel_differ = atof(words[10]);     //Modify: read rotrel_differ from species files
+    fsp->vibrel_differ[0] = atof(words[11]);  //Modify: read vibrel_differ from species files
 
     if (fsp->rotdof > 0 || fsp->vibdof > 0) fsp->internaldof = 1;
     else fsp->internaldof = 0;

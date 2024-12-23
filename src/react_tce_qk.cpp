@@ -57,7 +57,7 @@ void ReactTCEQK::init()
 
 int ReactTCEQK::attempt(Particle::OnePart *ip, Particle::OnePart *jp,
                         double pre_etrans, double pre_erot, double pre_evib,
-                        double &post_etotal, int &kspecies)
+                        double &post_etotal, int &kspecies, double Ttran)
 {
   double pre_etotal;
   double e_excess;

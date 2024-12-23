@@ -28,8 +28,10 @@
 #include "random_knuth.h"
 #include "memory.h"
 #include "error.h"
+#include <iostream>           //modify，including iostream library
 
 using namespace SPARTA_NS;
+using namespace std;          //modify，using stantard namespace std
 
 enum{NONE,DISCRETE,SMOOTH};       // several files  (NOTE: change order)
 enum{PKEEP,PINSERT,PDONE,PDISCARD,PENTRY,PEXIT,PSURF};   // several files
@@ -208,7 +210,7 @@ void Collide::init()
   // reallocate one-cell data structs for one or many groups
 
   oldgroups = ngroups;
-  ngroups = mixture->ngroup;
+  ngroups = mixture->ngroup; //modify
 
   if (ngroups != oldgroups) {
     if (oldgroups == 1) {
@@ -458,7 +460,11 @@ template < int NEARCP > void Collide::collisions_one()
   int i,j,k,n,ip,np;
   int nattempt,reactflag;
   double attempt,volume;
-  Particle::OnePart *ipart,*jpart,*kpart;
+  Particle::OnePart *ipart,*jpart,*kpart,*mpart;
+  Particle::Species* species = particle->species;
+  int ispecies;
+  double mass;
+  double *v;
 
   // loop over cells I own
 
@@ -490,9 +496,39 @@ template < int NEARCP > void Collide::collisions_one()
 
     n = 0;
     while (ip >= 0) {
-      plist[n++] = ip;
+      plist[n++] = ip;  //该循环运行完之后，知道了当前网格内所有粒子的编号。以下可以进行温度统计
       ip = next[ip];
     }
+
+
+    //modify (2024.4.16) calculate the cell translational temperature
+    double a[5] = { 0 };
+
+    for (int i = 0; i < np; i++) {
+        mpart = &particles[plist[i]]; //根据粒子编号索取粒子信息
+        
+        ispecies = mpart->ispecies;  // 当前粒子组分编号
+        mass = species[ispecies].mass;  //当前粒子质量
+
+        v = mpart->v;
+        
+        a[0] += mass;
+        a[1] += mass * v[0] ;   //Σ(mv_x)
+        a[2] += mass * v[1] ;   //Σ(mv_y)
+        a[3] += mass * v[2] ;   //Σ(mv_z)
+        a[4] += mass * (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); //Σ(mv^2)
+    }
+
+    double mass_ave = a[0] / np;  //平均质量
+    double cx_ave = a[1] / a[0];  //质心x速度
+    double cy_ave = a[2] / a[0];  //质心y速度 (分子分母同除以np，可以回到Bird书上1.43式)
+    double cz_ave = a[3] / a[0];  //质心z速度
+    double ke_ave = a[4] / np ;   //平均动能(ave_mv^2)
+
+    Ttran = 0.5 * ( ke_ave - mass_ave * (cx_ave * cx_ave + cy_ave * cy_ave + cz_ave * cz_ave) ) / (1.5 * update->boltz); //modify: 平动温度
+    Ttran = Ttran * np / (np - 1); //按粒子数修正温度
+
+    //cout<<"ntimestep="<<update->ntimestep<<" total np:"<<np <<"Ttran_single"<<Ttran<<endl;       //debug:验证np和Ttran的有效性
 
     // attempt = exact collision attempt count for all particles in cell
     // nattempt = rounded attempt with RN
@@ -600,7 +636,11 @@ template < int NEARCP > void Collide::collisions_group()
   int *ni,*nj,*ilist,*jlist;
   int *nn_igroup,*nn_jgroup;
   double attempt,volume;
-  Particle::OnePart *ipart,*jpart,*kpart;
+  Particle::OnePart *ipart,*jpart,*kpart,*mpart;
+  Particle::Species* species = particle->species;  //modify
+  int ispecies;
+  double mass;
+  double *v;
 
   // loop over cells I own
 
@@ -652,6 +692,35 @@ template < int NEARCP > void Collide::collisions_group()
       n++;
       ip = next[ip];
     }
+
+    //modify (2024.4.16) calculate the cell translational temperature
+    double a[5] = { 0 };
+
+    for (int i = 0; i < np; i++) {
+        mpart = &particles[plist[i]]; //根据粒子编号索取粒子信息
+
+        ispecies = mpart->ispecies;  // 当前粒子组分编号
+        mass = species[ispecies].mass;  //当前粒子质量
+
+        v = mpart->v;
+
+        a[0] += mass;
+        a[1] += mass * v[0];   //Σ(mv_x)
+        a[2] += mass * v[1];   //Σ(mv_y)
+        a[3] += mass * v[2];   //Σ(mv_z)
+        a[4] += mass * (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); //Σ(mv^2)
+    }
+
+    double mass_ave = a[0] / np;  //平均质量
+    double cx_ave = a[1] / a[0];  //质心x速度
+    double cy_ave = a[2] / a[0];  //质心y速度 (分子分母同除以np，可以回到Bird书上1.43式)
+    double cz_ave = a[3] / a[0];  //质心z速度
+    double ke_ave = a[4] / np;   //平均动能(ave_mv^2)
+
+    Ttran = 0.5 * (ke_ave - mass_ave * (cx_ave * cx_ave + cy_ave * cy_ave + cz_ave * cz_ave)) / (1.5 * update->boltz); //modify: 平动温度
+    Ttran = Ttran * np / (np - 1); //按粒子数修正温度
+
+    //cout << "ntimestep=" << update->ntimestep << " total np:" << np << "Ttran_mix" << Ttran << endl;       //debug:验证np和Ttran的有效性
 
     if (NEARCP) {
       ngmax = 0;

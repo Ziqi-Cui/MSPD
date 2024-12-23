@@ -73,6 +73,11 @@ class CollideVSS : public Collide {
   };
 
  protected:
+
+  double ksi_tran_MP;  //modify, translational DOF of pre_collision particles in dissolation reaction(2024.5.8)
+  double mass_M, mass_P; //modify, mass of pre_collision particles in dissolation reaction(2024.5.9)
+  double alpha_MP; //modify, VSS_alpha of pre_collision particles in dissolation reaction(2024.5.9)
+
   int relaxflag,eng_exchange;
   double vr_indice;
   double **prefactor; // static portion of collision attempt frequency

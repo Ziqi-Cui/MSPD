@@ -62,6 +62,7 @@ class Collide : protected Pointers {
   int ngroups;        // # of groups
 
  protected:
+  double Ttran;       //modify, translational temperature of the cell(2024.4.16)
   int npmax;          // max # of particles in plist
   int *plist;         // list of particle indices for the entire cell
 

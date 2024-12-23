@@ -33,10 +33,12 @@ class Particle : protected Pointers {
     double mass;            // molecular mass
     double specwt;          // species weight
     double charge;          // multiple of electron charge
-    double rotrel;          // inverse rotational relaxation number
+    double rotrel;          // modify: rotational relaxation number (NOT inverse)
+    double rotrel_differ;   // modify: rotational relaxation number, when different species interact
     double rottemp[3];      // rotational temperature(s)
-    double vibtemp[MAXVIBMODE];   // vibrational temperature(s)
-    double vibrel[MAXVIBMODE];    // inverse vibrational relaxation number(s)
+    double vibtemp[MAXVIBMODE];         // vibrational temperature(s)
+    double vibrel[MAXVIBMODE];          // modify: vibrational relaxation number(s) (NOT inverse)
+    double vibrel_differ[MAXVIBMODE];   // modify: vibrational relaxation number(s), when different species interact
     int vibdegen[MAXVIBMODE];     // vibrational mode degeneracies
     int rotdof,vibdof;      // rotational/vibrational DOF
     int nrottemp,nvibmode;  // # of rotational/vibrational temps/modes defined

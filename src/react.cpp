@@ -83,8 +83,8 @@ void React::modify_params(int narg, char **arg)
         iarg += 2;
     } else if (strcmp(arg[iarg],"partial_energy") == 0) {
         if (iarg+2 > narg) error->all(FLERR,"Illegal react_modify command");
-        if (strcmp(arg[iarg+1],"yes") == 0) partialEnergy = 1;
-        else if (strcmp(arg[iarg+1],"no") == 0) partialEnergy = 0;
+        if (strcmp(arg[iarg+1],"yes") == 0) partialEnergy = 1;     //rDOF model
+        else if (strcmp(arg[iarg+1],"no") == 0) partialEnergy = 0; //total energy model
         else error->all(FLERR,"Illegal react_modify command");
         iarg += 2;
     } else error->all(FLERR,"Illegal react_modify command");

@@ -18,8 +18,14 @@
 #include "grid.h"
 #include "particle.h"
 #include "error.h"
+#include "random_mars.h"   //modify:添加随机种子生成器
+#include "random_knuth.h"
+#include "math.h"          //modify:添加数学工具包
+#include "math_const.h"    
+#include "memory.h"
 
 using namespace SPARTA_NS;
+using namespace MathConst;  //modify:添加命名空间
 
 /* ---------------------------------------------------------------------- */
 
@@ -30,7 +36,7 @@ FixTempGlobalRescale::FixTempGlobalRescale(SPARTA *sparta, int narg, char **arg)
 
   nevery = atoi(arg[2]);
   tstart = atof(arg[3]);
-  tstop = atof(arg[4]);
+  tstop = atof(arg[4]);   //modify Tstop为目标控温温度
   fraction = atof(arg[5]);
 
   if (nevery <= 0) error->all(FLERR,"Illegal fix temp/global/rescale command");
@@ -51,7 +57,7 @@ int FixTempGlobalRescale::setmask()
 
 /* ---------------------------------------------------------------------- */
 
-void FixTempGlobalRescale::end_of_step()
+void FixTempGlobalRescale::end_of_step() //温度缩放在每个时间步末尾进行
 {
   if (update->ntimestep % nevery) return;
 
@@ -71,9 +77,11 @@ void FixTempGlobalRescale::end_of_step()
   double *v;
   double t = 0.0;
 
+  RanKnuth *random = new RanKnuth(update->ranmaster->uniform());  //为了调用uniform函数，必须new一个random指针
+
   for (int i = 0; i < nlocal; i++) {
     v = particles[i].v;
-    t += (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]) *
+    t += (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]) *   //原始的温度控制不区分组分，是对网格内所有粒子做叠加处理
       species[particles[i].ispecies].mass;
   }
 
@@ -92,10 +100,25 @@ void FixTempGlobalRescale::end_of_step()
   t_target = t_current - fraction*(t_current-t_target);
   double vscale = sqrt(t_target/t_current);
 
+  double beta = 2 * update->boltz * tstop;
+
   for (int i = 0; i < nlocal; i++) {
     v = particles[i].v;
-    v[0] *= vscale;
-    v[1] *= vscale;
-    v[2] *= vscale;
+    //v[0] *= vscale;  
+    //v[1] *= vscale;   //modify: 不再采用原始的温度放缩模式
+    //v[2] *= vscale;
+  
+    //modify（2024.4.15）: 直接按照目标温度的Maxwell速度分布函数，对每个粒子的速度做重新抽样。考虑了不同组分的质量差异。
+    //方法参考Boyd(2017)课本，公式A.20
+    
+    v[0] = sqrt(-log(random->uniform())) * sin(MY_2PI * random->uniform()) * 
+           sqrt( beta / species[particles[i].ispecies].mass);
+    
+    v[1] = sqrt(-log(random->uniform())) * sin(MY_2PI * random->uniform()) *
+           sqrt( beta / species[particles[i].ispecies].mass);
+    
+    v[2] = sqrt(-log(random->uniform())) * sin(MY_2PI * random->uniform()) *
+           sqrt( beta / species[particles[i].ispecies].mass);
   }
+  delete random; //释放random指针
 }
