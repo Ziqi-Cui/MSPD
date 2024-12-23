@@ -1439,14 +1439,14 @@ template < int DIM, int SURF > void Update::move_weighted()
                 xnew[0] = x[0] + dtremain * v[0];
                 xnew[1] = x[1] + dtremain * v[1];
                 if (DIM != 2) xnew[2] = x[2] + dtremain * v[2];
-                if (perturbflag) (this->*moveperturb)(dtremain, xnew, v);
+                if (perturbflag) (this->*moveperturb)(i, particles[i].icell, dtremain, xnew, v);
             }
             else if (pflag == PINSERT) {
                 dtremain = particles[i].dtremain * particles[i].dt_weight / dt_weight;
                 xnew[0] = x[0] + dtremain * v[0];
                 xnew[1] = x[1] + dtremain * v[1];
                 if (DIM != 2) xnew[2] = x[2] + dtremain * v[2];
-                if (perturbflag) (this->*moveperturb)(dtremain, xnew, v);
+                if (perturbflag) (this->*moveperturb)(i, particles[i].icell, dtremain, xnew, v);
             }
             else if (pflag == PENTRY) {
                 icell = particles[i].icell;
@@ -1838,10 +1838,10 @@ template < int DIM, int SURF > void Update::move_weighted()
                             // as well as surf_tally !!!!!!!!
                             if (DIM == 3)
                                 jpart = surf->sc[tri->isc]->
-                                collide(ipart, tri->norm, dtremain, tri->isr, reaction);
+                                collide(ipart, dtremain, minsurf, tri->norm, tri->isr, reaction);
                             if (DIM != 3)
                                 jpart = surf->sc[line->isc]->
-                                collide(ipart, line->norm, dtremain, line->isr, reaction);
+                                collide(ipart, dtremain, minsurf, line->norm, line->isr, reaction);
 
                             if (jpart) {
                                 particles = particle->particles;
@@ -2136,7 +2136,7 @@ template < int DIM, int SURF > void Update::move_weighted()
                     xnew[0] = x[0] + dtremain * v[0];
                     xnew[1] = x[1] + dtremain * v[1];
                     if (DIM != 2) xnew[2] = x[2] + dtremain * v[2];
-                    if (perturbflag) (this->*moveperturb)(dtremain, xnew, v);
+                    if (perturbflag) (this->*moveperturb)(i, particles[i].icell, dtremain, xnew, v);
                 }
 
                 // if nsurf < 0, new cell is EMPTY ghost
@@ -2304,59 +2304,59 @@ void Update::field_per_grid(int i, int icell, double dt, double *x, double *v)
      due to external per particle field
    array in fix[ifieldfix] stores per particle perturbations for x and v
 ------------------------------------------------------------------------- */
-
-void Update::field_per_particle(int i, int icell, double dt, double* x, double* v)
-{
-    double dtsq = 0.5 * dt * dt;
-    double** array = modify->fix[ifieldfix]->array_particle;
-
-    int icol = 0;
-    if (field_active[0]) {
-        x[0] += dtsq * array[i][icol];
-        v[0] += dt * array[i][icol];
-        icol++;
-    }
-    if (field_active[1]) {
-        x[1] += dtsq * array[i][icol];
-        v[1] += dt * array[i][icol];
-        icol++;
-    }
-    if (field_active[2]) {
-        x[2] += dtsq * array[i][icol];
-        v[2] += dt * array[i][icol];
-        icol++;
-    }
-};
-
-
-/* ----------------------------------------------------------------------
-   calculate motion perturbation for a single particle I in grid cell Icell
-     due to external per grid cell field
-   array in fix[ifieldfix] stores per grid cell perturbations for x and v
-------------------------------------------------------------------------- */
-
-void Update::field_per_grid(int i, int icell, double dt, double* x, double* v)
-{
-    double dtsq = 0.5 * dt * dt;
-    double** array = modify->fix[ifieldfix]->array_grid;
-
-    int icol = 0;
-    if (field_active[0]) {
-        x[0] += dtsq * array[icell][icol];
-        v[0] += dt * array[icell][icol];
-        icol++;
-    }
-    if (field_active[1]) {
-        x[1] += dtsq * array[icell][icol];
-        v[1] += dt * array[icell][icol];
-        icol++;
-    }
-    if (field_active[2]) {
-        x[2] += dtsq * array[icell][icol];
-        v[2] += dt * array[icell][icol];
-        icol++;
-    }
-};
+//
+//void Update::field_per_particle(int i, int icell, double dt, double* x, double* v)
+//{
+//    double dtsq = 0.5 * dt * dt;
+//    double** array = modify->fix[ifieldfix]->array_particle;
+//
+//    int icol = 0;
+//    if (field_active[0]) {
+//        x[0] += dtsq * array[i][icol];
+//        v[0] += dt * array[i][icol];
+//        icol++;
+//    }
+//    if (field_active[1]) {
+//        x[1] += dtsq * array[i][icol];
+//        v[1] += dt * array[i][icol];
+//        icol++;
+//    }
+//    if (field_active[2]) {
+//        x[2] += dtsq * array[i][icol];
+//        v[2] += dt * array[i][icol];
+//        icol++;
+//    }
+//};
+//
+//
+///* ----------------------------------------------------------------------
+//   calculate motion perturbation for a single particle I in grid cell Icell
+//     due to external per grid cell field
+//   array in fix[ifieldfix] stores per grid cell perturbations for x and v
+//------------------------------------------------------------------------- */
+//
+//void Update::field_per_grid(int i, int icell, double dt, double* x, double* v)
+//{
+//    double dtsq = 0.5 * dt * dt;
+//    double** array = modify->fix[ifieldfix]->array_grid;
+//
+//    int icol = 0;
+//    if (field_active[0]) {
+//        x[0] += dtsq * array[icell][icol];
+//        v[0] += dt * array[icell][icol];
+//        icol++;
+//    }
+//    if (field_active[1]) {
+//        x[1] += dtsq * array[icell][icol];
+//        v[1] += dt * array[icell][icol];
+//        icol++;
+//    }
+//    if (field_active[2]) {
+//        x[2] += dtsq * array[icell][icol];
+//        v[2] += dt * array[icell][icol];
+//        icol++;
+//    }
+//};
 
 
 /* ----------------------------------------------------------------------

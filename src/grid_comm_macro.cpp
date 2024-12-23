@@ -43,7 +43,7 @@
 #include "grid_comm_macro.h"
 #include "collide.h"
 #include "particle.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "update.h"
 #include "domain.h"
 #include "surf_collide.h"
@@ -370,7 +370,7 @@ const CommMacro* GridCommMacro::interpolation(Particle::OnePart* ipart)
     Grid::ChildCell& icell = grid->cells[ipart->icell];
     if (rand_flag) {
         rand_flag = 0;
-        random = new RanPark(update->ranmaster->uniform());
+        random = new RanKnuth(update->ranmaster->uniform());
         if (domain->dimension == 3) interptr = &GridCommMacro::interpolation_3d;
         else if (domain->axisymmetric) interptr = &GridCommMacro::interpolation_axisym;
         else  interptr = &GridCommMacro::interpolation_2d;

@@ -41,7 +41,7 @@ public:
     const CommMacro* interpolation(class Particle::OnePart*);
     
     int nprocs, me;
-    class RanPark* random;
+    class RanKnuth* random;
     int rand_flag; //init random when first used
     // sending plan
     int nsendproc;

@@ -489,9 +489,9 @@ void CreateParticles::create_local()
         outside_region(dimension,cells[icell].lo,cells[icell].hi))
       continue;
 
-    flowvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    flowvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
     if (!cutflag && cells[icell].nsurf) continue;
-    insertvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    insertvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
   }
 
   // calculate total Np if not set explicitly
@@ -577,7 +577,7 @@ void CreateParticles::create_local()
       continue;
     if (!cutflag && cells[icell].nsurf) continue;
 
-    volsum += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    volsum += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
 
     ntarget = nme * volsum/insertvolme - nprev;
     npercell = static_cast<int> (ntarget);
@@ -738,9 +738,9 @@ void CreateParticles::create_local_twopass()
         outside_region(dimension,cells[icell].lo,cells[icell].hi))
       continue;
 
-    flowvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    flowvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
     if (!cutflag && cells[icell].nsurf) continue;
-    insertvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    insertvolme += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
   }
 
   // calculate total Np if not set explicitly
@@ -831,7 +831,7 @@ void CreateParticles::create_local_twopass()
       continue;
     if (!cutflag && cells[icell].nsurf) continue;
 
-    volsum += cinfo[icell].volume / cinfo[icell].weight * grid->cells[i].dt_weight;
+    volsum += cinfo[icell].volume / cinfo[icell].weight * grid->cells[icell].dt_weight;
 
     ntarget = nme * volsum/insertvolme - nprev;
     npercell = static_cast<int> (ntarget);

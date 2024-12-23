@@ -43,7 +43,7 @@
 #include "grid_comm_macro.h"
 #include "irregular.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 
 using namespace SPARTA_NS;
@@ -592,7 +592,7 @@ double AdaptGradCompute::cal_grad(int icell) {
     Grid::ChildCell* cells = grid->cells;
     Grid::ParentCell* pcells = grid->pcells;
     cellint *neigh = cells[icell].neigh;
-    RanPark random(update->ranmaster->uniform());
+    RanKnuth random(update->ranmaster->uniform());
     int nmask = cells[icell].nmask;
     double* lo = cells[icell].lo;
     double* hi = cells[icell].hi;

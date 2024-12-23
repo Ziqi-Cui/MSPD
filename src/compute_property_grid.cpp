@@ -80,52 +80,36 @@ ComputePropertyGrid::ComputePropertyGrid(SPARTA *sparta, int narg, char **arg) :
 
     } else if (strcmp(arg[iarg],"vol") == 0) {
       pack_choice[i] = &ComputePropertyGrid::pack_vol;
-      index[i] = 11;
     } else if (strcmp(arg[iarg],"dt_weight") == 0) {
       pack_choice[i] = &ComputePropertyGrid::pack_dtweight;
-      index[i] = 12;
     } else if (strcmp(arg[iarg], "temp") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_temp;
-        index[i] = 13;
     } else if (strcmp(arg[iarg], "u") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_u;
-        index[i] = 14;
     } else if (strcmp(arg[iarg], "v") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_v;
-        index[i] = 15;
     } else if (strcmp(arg[iarg], "w") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_w;
-        index[i] = 16;
     } else if (strcmp(arg[iarg], "qx") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_qx;
-        index[i] = 17;
     } else if (strcmp(arg[iarg], "qy") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_qy;
-        index[i] = 18;
     } else if (strcmp(arg[iarg], "qz") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_qz;
-        index[i] = 19;
     } else if (strcmp(arg[iarg], "txx") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_txx;
-        index[i] = 20;
     } else if (strcmp(arg[iarg], "tyy") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_tyy;
-        index[i] = 21;
     } else if (strcmp(arg[iarg], "tzz") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_tzz;
-        index[i] = 22;
     } else if (strcmp(arg[iarg], "txy") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_txy;
-        index[i] = 23;
     } else if (strcmp(arg[iarg], "txz") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_txz;
-        index[i] = 24;
     } else if (strcmp(arg[iarg], "tyz") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_tyz;
-        index[i] = 25;
     } else if (strcmp(arg[iarg], "zero") == 0) {
         pack_choice[i] = &ComputePropertyGrid::pack_zero;
-        index[i] = 26;
     }
     else error->all(FLERR,"Invalid keyword in compute property/grid command");
   }

@@ -43,7 +43,7 @@
 #include "grid_comm_macro.h"
 #include "irregular.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 // debug
 #include "unistd.h"
 using namespace SPARTA_NS;
@@ -907,7 +907,7 @@ double AdaptDtWeight::cal_grad(int icell) {
     Grid::ChildCell* cells = grid->cells;
     Grid::ParentCell* pcells = grid->pcells;
     cellint *neigh = cells[icell].neigh;
-    RanPark random(update->ranmaster->uniform());
+    RanKnuth random(update->ranmaster->uniform());
     int nmask = cells[icell].nmask;
     double* lo = cells[icell].lo;
     double* hi = cells[icell].hi;
@@ -981,7 +981,7 @@ void AdaptDtWeight::scale_particle() {
     int nlocal_original = particle->nlocal;
     part_scale = new int[nlocal_original];
 
-    RanPark random(update->ranmaster->uniform());
+    RanKnuth random(update->ranmaster->uniform());
     Particle::OnePart* particles = particle->particles;
     int count_delete = 0, count_clone = 0;
     int nlocal = particle->nlocal;
