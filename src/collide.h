@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -45,7 +45,7 @@ class Collide : protected Pointers {
   virtual double attempt_collision(int, int, double) = 0;
   virtual double attempt_collision(int, int, int, double) = 0;
   virtual int test_collision(int, int, int,
-			     Particle::OnePart *, Particle::OnePart *) = 0;
+                             Particle::OnePart *, Particle::OnePart *) = 0;
   virtual void setup_collision(Particle::OnePart *, Particle::OnePart *) = 0;
   virtual int perform_collision(Particle::OnePart *&, Particle::OnePart *&,
                                 Particle::OnePart *&) = 0;
@@ -59,14 +59,16 @@ class Collide : protected Pointers {
   virtual void add_grid_one();
   virtual void adapt_grid();
 
+  int ngroups;        // # of groups
+
  protected:
+  double Ttran;       //modify, translational temperature of the cell(2024.4.16)
   int npmax;          // max # of particles in plist
   int *plist;         // list of particle indices for the entire cell
 
   int nglocal;        // current size of per-cell arrays
   int nglocalmax;     // max allocated size of per-cell arrays (vremax, remain)
 
-  int ngroups;        // # of groups
   int *ngroup;        // # of particles in each group
   int *maxgroup;      // max # of particles allocated per group
   int **glist;        // indices into plist of particles in each group
@@ -82,12 +84,12 @@ class Collide : protected Pointers {
   int *nn_last_partner_igroup;   // ditto for two groups of particles
   int *nn_last_partner_jgroup;
 
-  int ndelete,maxdelete;      // # of particles removed by chemsitry
+  int ndelete,maxdelete;      // # of particles removed by chemistry
   int *dellist;               // list of particle indices to delete
 
   char *mixID;               // ID of mixture to use for groups
   class Mixture *mixture;    // ptr to mixture
-  class RanPark *random;     // RNG for collision generation
+  class RanKnuth *random;     // RNG for collision generation
 
   int vre_first;      // 1 for first run after collision style is defined
   int vre_start;      // 1 if reset vre params at start of each run
@@ -115,9 +117,7 @@ class Collide : protected Pointers {
   int ambispecies;    // species for ambipolar electrons
   int index_ionambi;  // 2 custom ambipolar vectors
   int index_velambi;
-  int *ions;          // ptr to fix ambipolar list of ions
 
-  int nelectron;                // # of ambipolar electrons in elist
   int maxelectron;              // max # elist can hold
   Particle::OnePart *elist;     // list of ambipolar electrons
                                 // for one grid cell or pair of groups in cell

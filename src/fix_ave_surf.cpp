@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -32,8 +32,9 @@
 
 using namespace SPARTA_NS;
 
-enum{COMPUTE,FIX,VARIABLE};
+enum{COMPUTE,FIX,VARIABLE,CUSTOM};
 enum{ONE,RUNNING};
+enum{INT,DOUBLE};                       // several files
 
 #define INVOKED_PER_SURF 32
 #define DELTA 1024;
@@ -65,8 +66,9 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
   int iarg = 6;
   while (iarg < narg) {
     if ((strncmp(arg[iarg],"c_",2) == 0) ||
-	(strncmp(arg[iarg],"f_",2) == 0) ||
-	(strncmp(arg[iarg],"v_",2) == 0)) {
+        (strncmp(arg[iarg],"f_",2) == 0) ||
+        (strncmp(arg[iarg],"v_",2) == 0) ||
+        (strncmp(arg[iarg],"s_",2) == 0)) {
       nvalues++;
       iarg++;
     } else break;
@@ -97,6 +99,7 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
     if (arg[i][0] == 'c') which[i] = COMPUTE;
     else if (arg[i][0] == 'f') which[i] = FIX;
     else if (arg[i][0] == 'v') which[i] = VARIABLE;
+    else if (arg[i][0] == 's') which[i] = CUSTOM;
 
     int n = strlen(arg[i]);
     char *suffix = new char[n];
@@ -132,60 +135,72 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
   if (per_surf_freq % nevery || (nrepeat-1)*nevery >= per_surf_freq)
     error->all(FLERR,"Illegal fix ave/surf command");
 
+  int count_tally = 0;
+
   for (int i = 0; i < nvalues; i++) {
     if (which[i] == COMPUTE) {
       int icompute = modify->find_compute(ids[i]);
       if (icompute < 0)
-	error->all(FLERR,"Compute ID for fix ave/surf does not exist");
+        error->all(FLERR,"Compute ID for fix ave/surf does not exist");
       if (modify->compute[icompute]->per_surf_flag == 0)
-	error->all(FLERR,
-		   "Fix ave/surf compute does not calculate per-surf values");
+        error->all(FLERR,
+                   "Fix ave/surf compute does not calculate per-surf values");
       if (argindex[i] == 0 &&
-	  modify->compute[icompute]->size_per_surf_cols != 0)
-	error->all(FLERR,"Fix ave/surf compute does not "
-		   "calculate a per-surf vector");
+          modify->compute[icompute]->size_per_surf_cols != 0)
+        error->all(FLERR,"Fix ave/surf compute does not "
+                   "calculate a per-surf vector");
       if (argindex[i] && modify->compute[icompute]->size_per_surf_cols == 0)
-	error->all(FLERR,"Fix ave/surf compute does not "
-		   "calculate a per-surf array");
+        error->all(FLERR,"Fix ave/surf compute does not "
+                   "calculate a per-surf array");
       if (argindex[i] &&
-	  argindex[i] > modify->compute[icompute]->size_per_surf_cols)
-	error->all(FLERR,"Fix ave/surf compute array is accessed out-of-range");
+          argindex[i] > modify->compute[icompute]->size_per_surf_cols)
+        error->all(FLERR,"Fix ave/surf compute array is accessed out-of-range");
+      if (modify->compute[icompute]->surf_tally_flag) count_tally++;
 
     } else if (which[i] == FIX) {
       int ifix = modify->find_fix(ids[i]);
       if (ifix < 0)
-	error->all(FLERR,"Fix ID for fix ave/surf does not exist");
+        error->all(FLERR,"Fix ID for fix ave/surf does not exist");
       if (modify->fix[ifix]->per_surf_flag == 0)
-	error->all(FLERR,"Fix ave/surf fix does not calculate per-surf values");
+        error->all(FLERR,"Fix ave/surf fix does not calculate per-surf values");
       if (argindex[i] == 0 && modify->fix[ifix]->size_per_surf_cols != 0)
-	error->all(FLERR,
-		   "Fix ave/surf fix does not calculate a per-surf vector");
+        error->all(FLERR,
+                   "Fix ave/surf fix does not calculate a per-surf vector");
       if (argindex[i] && modify->fix[ifix]->size_per_surf_cols == 0)
-	error->all(FLERR,
-		   "Fix ave/surf fix does not calculate a per-surf array");
+        error->all(FLERR,
+                   "Fix ave/surf fix does not calculate a per-surf array");
       if (argindex[i] && argindex[i] > modify->fix[ifix]->size_per_surf_cols)
-	error->all(FLERR,"Fix ave/surf fix array is accessed out-of-range");
+        error->all(FLERR,"Fix ave/surf fix array is accessed out-of-range");
       if (nevery % modify->fix[ifix]->per_surf_freq)
-	error->all(FLERR,
-		   "Fix for fix ave/surf not computed at compatible time");
+        error->all(FLERR,
+                   "Fix for fix ave/surf not computed at compatible time");
 
     } else if (which[i] == VARIABLE) {
       int ivariable = input->variable->find(ids[i]);
       if (ivariable < 0)
-	error->all(FLERR,"Variable name for fix ave/surf does not exist");
+        error->all(FLERR,"Variable name for fix ave/surf does not exist");
       if (input->variable->surf_style(ivariable) == 0)
-	error->all(FLERR,"Fix ave/surf variable is not surf-style variable");
+        error->all(FLERR,"Fix ave/surf variable is not surf-style variable");
+
+    } else if (which[i] == CUSTOM) {
+      int icustom = surf->find_custom(ids[i]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for fix ave/surf does not exist");
+      if (argindex[i] == 0 && surf->esize[icustom] != 0)
+        error->all(FLERR,"Fix ave/surf custom attribute is not a vector");
+      if (argindex[i] && surf->esize[icustom] == 0)
+        error->all(FLERR,"Fix ave/surf custom attribute is not an array");
+      if (argindex[i] && argindex[i] > surf->esize[icustom])
+        error->all(FLERR,"Fix ave/surf custom attribute array is "
+		   "accessed out-of-range");
     }
   }
 
-  // if any input is a compute, all must be
+  // if any input is a compute with surf_tally_flag, all must be
 
-  int cflag = 0;
-  for (int i = 0; i < nvalues; i++)
-    if (which[i] == COMPUTE) cflag++;
-
-  if (cflag && cflag != nvalues)
-    error->all(FLERR,"Fix ave/surf inputs must be all computes or no computes");
+  if (count_tally && count_tally != nvalues)
+    error->all(FLERR,"Fix ave/surf inputs must be all be computes "
+	       "which tally particle/surf collisions or all not be");
 
   // this fix produces either a per-surf vector or array
 
@@ -193,13 +208,16 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
   if (nvalues == 1) size_per_surf_cols = 0;
   else size_per_surf_cols = nvalues;
 
-  // allocate accumulators for owned surfaces
-  // if ave = RUNNING, allocate extra set of accvec/accarray
+  // set surf element masks for owned surfs
 
   nown = surf->nown;
   memory->create(masks,nown,"ave/surf:masks");
+  surf->extract_masks(masks);
 
-  if (cflag) {
+  // allocate accumulators for owned surfaces
+  // if ave = RUNNING, allocate extra set of accvec/accarray
+
+  if (count_tally) {
     bufvec = NULL;
     bufarray = NULL;
     if (nvalues == 1) memory->create(bufvec,nown,"ave/surf:bufvec");
@@ -229,12 +247,12 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
   if (ave == RUNNING) {
     if (nvalues == 1)
       for (int i = 0; i < nown; i++)
-	accvec[i] = 0.0;
+        accvec[i] = 0.0;
     else {
       int m;
       for (int i = 0; i < nown; i++)
-	for (m = 0; m < nvalues; m++)
-	  accarray[i][m] = 0.0;
+        for (m = 0; m < nvalues; m++)
+          accarray[i][m] = 0.0;
     }
   }
 
@@ -248,36 +266,7 @@ FixAveSurf::FixAveSurf(SPARTA *sparta, int narg, char **arg) :
     int m;
     for (int i = 0; i < nown; i++)
       for (m = 0; m < nvalues; m++)
-	array_surf[i][m] = 0.0;
-  }
-
-  // set surf element masks for owned surfs
-
-  if (surf->distributed) {
-    if (domain->dimension == 2) {
-      Surf::Line *lines = surf->mylines;
-      for (int i = 0; i < nown; i++)
-        masks[i] = lines[i].mask;
-    } else {
-      Surf::Tri *tris = surf->mytris;
-      for (int i = 0; i < nown; i++)
-      masks[i] = tris[i].mask;
-    }
-
-  } else {
-    int me = comm->me;
-    int nprocs = comm->nprocs;
-    int nsurf = surf->nsurf;
-    int m = 0;
-    if (domain->dimension == 2) {
-      Surf::Line *lines = surf->lines;
-      for (int i = me; i < nsurf; i += nprocs)
-        masks[m++] = lines[i].mask;
-    } else {
-      Surf::Tri *tris = surf->tris;
-      for (int i = me; i < nsurf; i += nprocs)
-        masks[m++] = tris[i].mask;
-    }
+        array_surf[i][m] = 0.0;
   }
 
   // nvalid = next step on which end_of_step does something
@@ -345,20 +334,26 @@ void FixAveSurf::init()
     if (which[m] == COMPUTE) {
       int icompute = modify->find_compute(ids[m]);
       if (icompute < 0)
-	error->all(FLERR,"Compute ID for fix ave/surf does not exist");
+        error->all(FLERR,"Compute ID for fix ave/surf does not exist");
       value2index[m] = icompute;
 
     } else if (which[m] == FIX) {
       int ifix = modify->find_fix(ids[m]);
       if (ifix < 0)
-	error->all(FLERR,"Fix ID for fix ave/surf does not exist");
+        error->all(FLERR,"Fix ID for fix ave/surf does not exist");
       value2index[m] = ifix;
 
     } else if (which[m] == VARIABLE) {
       int ivariable = input->variable->find(ids[m]);
       if (ivariable < 0)
-	error->all(FLERR,"Variable name for fix ave/surf does not exist");
+        error->all(FLERR,"Variable name for fix ave/surf does not exist");
       value2index[m] = ivariable;
+
+    } else if (which[m] == CUSTOM) {
+      int icustom = surf->find_custom(ids[m]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for fix ave/surf does not exist");
+      value2index[m] = icustom;
 
     } else value2index[m] = -1;
   }
@@ -377,7 +372,7 @@ void FixAveSurf::setup()
 
 void FixAveSurf::end_of_step()
 {
-  int i,j,k,m,n,isurf,itally;
+  int i,j,k,m,n,itally;
   surfint surfID;
   double *vec;
 
@@ -391,11 +386,11 @@ void FixAveSurf::end_of_step()
   if (ave == ONE && irepeat == 0) {
     if (nvalues == 1)
       for (i = 0; i < nown; i++)
-	accvec[i] = 0.0;
+        accvec[i] = 0.0;
     else
       for (i = 0; i < nown; i++)
-	for (m = 0; m < nvalues; m++)
-	  accarray[i][m] = 0.0;
+        for (m = 0; m < nvalues; m++)
+          accarray[i][m] = 0.0;
   }
 
   // clear hash of tallied surf IDs if first sample
@@ -405,7 +400,7 @@ void FixAveSurf::end_of_step()
     ntally = 0;
   }
 
-  // accumulate results of computes,fixes,variables
+  // accumulate results of computes,fixes,variables,custom attributes
   // compute/fix/variable may invoke computes so wrap with clear/add
 
   modify->clearstep_compute();
@@ -513,6 +508,52 @@ void FixAveSurf::end_of_step()
     // evaluate surf-style variable
 
     } else if (which[m] == VARIABLE) {
+      if (j == 0)
+	input->variable->compute_surf(n,accvec,1,1);
+      else
+	input->variable->compute_surf(n,&accarray[0][m],nvalues,1);
+
+    // access custom attribute
+
+    } else if (which[m] == CUSTOM) {
+      if (j == 0) {
+        if (nvalues == 1) {
+	  if (surf->etype[n] == INT) {
+	    int *custom_vector = surf->eivec[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accvec[i] += custom_vector[i];
+	  } else if (surf->etype[n] == DOUBLE) {
+	    double *custom_vector = surf->edvec[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accvec[i] += custom_vector[i];
+	  }
+	} else {
+	  if (surf->etype[n] == INT) {
+	    int *custom_vector = surf->eivec[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accarray[i][m] += custom_vector[i];
+	  } else if (surf->etype[n] == DOUBLE) {
+	    double *custom_vector = surf->edvec[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accarray[i][m] += custom_vector[i];
+	  }
+	}
+      } else {
+        int jm1 = j - 1;
+        if (nvalues == 1) {
+	  if (surf->etype[n] == INT) {
+	    int **custom_array = surf->eiarray[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accvec[i] += custom_array[i][jm1];
+	  } else if (surf->etype[n] == DOUBLE) {
+	    double **custom_array = surf->edarray[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accvec[i] += custom_array[i][jm1];
+	  }
+	} else {
+	  if (surf->etype[n] == INT) {
+	    int **custom_array = surf->eiarray[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accarray[i][m] += custom_array[i][jm1];
+	  } else if (surf->etype[n] == DOUBLE) {
+	    double **custom_array = surf->edarray[surf->ewhich[n]];
+	    for (i = 0; i < nown; i++) accarray[i][m] += custom_array[i][jm1];
+	  }
+	}
+      }
     }
   }
 
@@ -533,6 +574,7 @@ void FixAveSurf::end_of_step()
 
   // invoke surf->collate() on tallies this fix stores for multiple steps
   // this merges tallies to owned surfs
+  // NOTE: this should only be done if source is a COMPUTE ?
 
   if (nvalues == 1) {
     surf->collate_vector(ntally,tally2surf,vec_tally,1,bufvec);

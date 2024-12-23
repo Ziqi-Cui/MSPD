@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -85,7 +85,7 @@ void ComputeBoundaryKokkos::compute_array()
 
   // sum tallies across processors
 
-  if (sparta->kokkos->gpu_direct_flag) {
+  if (sparta->kokkos->gpu_aware_flag) {
     MPI_Allreduce(d_myarray.data(),d_array.data(),nrow*ntotal,
                   MPI_DOUBLE,MPI_SUM,world);
     k_array.modify_device();

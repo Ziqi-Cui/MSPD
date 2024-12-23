@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -30,6 +30,7 @@
 #include "memory_kokkos.h"
 #include "error.h"
 #include "kokkos.h"
+#include "sparta_masks.h"
 
 using namespace SPARTA_NS;
 using namespace MathConst;
@@ -85,6 +86,7 @@ void ComputeLambdaGridKokkos::compute_per_grid_kokkos()
 
   // grab nrho and temp values from compute or fix
   // invoke nrho and temp computes as needed
+
   if (nrhowhich == COMPUTE) {
     if (!cnrho->kokkos_flag)
       error->all(FLERR,"Cannot (yet) use non-Kokkos computes with compute lambda/grid/kk");
@@ -98,25 +100,23 @@ void ComputeLambdaGridKokkos::compute_per_grid_kokkos()
       computeKKBase->post_process_grid_kokkos(nrhoindex,1,DAT::t_float_2d_lr(),NULL,DAT::t_float_1d_strided());
 
     if (nrhoindex == 0 || cnrho->post_process_grid_flag)
-      Kokkos::deep_copy(d_nrho_vector, computeKKBase->d_vector);
+      Kokkos::deep_copy(d_nrho_vector, computeKKBase->d_vector_grid);
     else {
       d_array = computeKKBase->d_array_grid;
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeLambdaGrid_LoadNrhoVecFromArray>(0,nglocal),*this);
-      DeviceType().fence();
       copymode = 0;
     }
-  } else if (nrhowhich == FIX){
+  } else if (nrhowhich == FIX) {
     if (!fnrho->kokkos_flag)
       error->all(FLERR,"Cannot (yet) use non-Kokkos fixes with compute lambda/grid/kk");
     KokkosBase* computeKKBase = dynamic_cast<KokkosBase*>(fnrho);
     if (nrhoindex == 0)
-      d_nrho_vector = computeKKBase->d_vector;
+      d_nrho_vector = computeKKBase->d_vector_grid;
     else {
       d_array = computeKKBase->d_array_grid;
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeLambdaGrid_LoadNrhoVecFromArray>(0,nglocal),*this);
-      DeviceType().fence();
       copymode = 0;
     }
   }
@@ -134,35 +134,33 @@ void ComputeLambdaGridKokkos::compute_per_grid_kokkos()
       computeKKBase->post_process_grid_kokkos(tempindex,1,DAT::t_float_2d_lr(),NULL,DAT::t_float_1d_strided());
 
     if (tempindex == 0 || ctemp->post_process_grid_flag)
-      Kokkos::deep_copy(d_temp_vector, computeKKBase->d_vector);
+      Kokkos::deep_copy(d_temp_vector, computeKKBase->d_vector_grid);
     else{
       d_array = computeKKBase->d_array_grid;
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeLambdaGrid_LoadTempVecFromArray>(0,nglocal),*this);
-      DeviceType().fence();
       copymode = 0;
     }
-  } else if (tempwhich == FIX){
+  } else if (tempwhich == FIX) {
     if (!ftemp->kokkos_flag)
       error->all(FLERR,"Cannot (yet) use non-Kokkos fixes with compute lambda/grid/kk");
     KokkosBase* computeKKBase = dynamic_cast<KokkosBase*>(ftemp);
     if (tempindex == 0)
-      d_temp_vector = computeKKBase->d_vector;
+      d_temp_vector = computeKKBase->d_vector_grid;
     else {
       d_array = computeKKBase->d_array_grid;
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeLambdaGrid_LoadTempVecFromArray>(0,nglocal),*this);
-      DeviceType().fence();
       copymode = 0;
     }
   }
 
   GridKokkos* grid_kk = ((GridKokkos*)grid);
+  grid_kk->sync(Device,CELL_MASK);
   d_cells = grid_kk->k_cells.d_view;
   dimension = domain->dimension;
   copymode = 1;
   Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeLambdaGrid_ComputePerGrid>(0,nglocal),*this);
-  DeviceType().fence();
   copymode = 0;
 
   if (kflag == KNONE) {
@@ -200,10 +198,11 @@ void ComputeLambdaGridKokkos::operator()(TagComputeLambdaGrid_ComputePerGrid, co
   else
     lambda = 1.0 / (prefactor * d_nrho_vector(i) * pow(tref/d_temp_vector(i),omega-0.5));
 
-  if (kflag == KNONE) d_vector(i) = lambda;
+  if (kflag == KNONE) d_vector_grid(i) = lambda;
   else d_array_grid(i,0) = lambda;
 
   // calculate per-cell Knudsen number
+
   if (kflag == KNONE) return;
 
   if (kflag == KALL) {
@@ -225,21 +224,26 @@ void ComputeLambdaGridKokkos::operator()(TagComputeLambdaGrid_ComputePerGrid, co
   }
 }
 
-/* ---------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------
+   reallocate arrays if nglocal has changed
+   called by init() and load balancer
+------------------------------------------------------------------------- */
 
 void ComputeLambdaGridKokkos::reallocate()
 {
   if (grid->nlocal == nglocal) return;
+
   nglocal = grid->nlocal;
   if (kflag == KNONE) {
     memoryKK->destroy_kokkos(k_vector_grid,vector_grid);
     memoryKK->create_kokkos(k_vector_grid,vector_grid,nglocal,"lambda/grid:vector_grid");
-    d_vector = k_vector_grid.d_view;
+    d_vector_grid = k_vector_grid.d_view;
   } else {
     memoryKK->destroy_kokkos(k_array_grid,array_grid);
     memoryKK->create_kokkos(k_array_grid,array_grid,nglocal,2,"lambda/grid:array_grid");
     d_array_grid = k_array_grid.d_view;
   }
   d_nrho_vector = DAT::t_float_1d ("d_nrho_vector", nglocal);
-  d_temp_vector = DAT::t_float_1d ("d_temp_vector", nglocal);
+  if (tempwhich != NONE)
+    d_temp_vector = DAT::t_float_1d ("d_temp_vector", nglocal);
 }

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -32,7 +32,7 @@ using namespace SPARTA_NS;
 // customize by adding keyword
 
 enum{ID,PROC,XLO,YLO,ZLO,XHI,YHI,ZHI,XC,YC,ZC,VOL,
-     COMPUTE,FIX,VARIABLE};
+     CUSTOM,COMPUTE,FIX,VARIABLE};
 enum{INT,DOUBLE,BIGINT,STRING};        // same as Dump
 
 #define INVOKED_PER_GRID 16
@@ -75,7 +75,11 @@ DumpGrid::DumpGrid(SPARTA *sparta, int narg, char **arg) :
   field2index = new int[nfield];
   argindex = new int[nfield];
 
-  // computes, fixes, variables which the dump accesses
+  // custom props, computes, fixes, variables which the dump accesses
+
+  ncustom = 0;
+  id_custom = NULL;
+  custom = NULL;
 
   ncompute = 0;
   id_compute = NULL;
@@ -161,6 +165,10 @@ DumpGrid::~DumpGrid()
   delete [] field2index;
   delete [] argindex;
 
+  for (int i = 0; i < ncustom; i++) delete [] id_custom[i];
+  memory->sfree(id_custom);
+  delete [] custom;
+
   for (int i = 0; i < ncompute; i++) delete [] id_compute[i];
   memory->sfree(id_compute);
   delete [] compute;
@@ -195,6 +203,16 @@ void DumpGrid::init_style()
   if (binary) write_choice = &DumpGrid::write_binary;
   else if (buffer_flag == 1) write_choice = &DumpGrid::write_string;
   else write_choice = &DumpGrid::write_text;
+
+  // check that each grid custom attribute still exists
+
+  int icustom;
+  for (int i = 0; i < ncustom; i++) {
+    icustom = grid->find_custom(id_custom[i]);
+    if (icustom < 0)
+      error->all(FLERR,"Could not find dump grid custom attribute");
+    custom[i] = icustom;
+  }
 
   // find current ptr for each compute,fix,variable
   // check that fix frequency is acceptable
@@ -263,7 +281,7 @@ void DumpGrid::header_binary(bigint ndump)
 
 void DumpGrid::header_item(bigint ndump)
 {
-  fprintf(fp,"ITEM: TIMESTEP\n");
+  /*fprintf(fp, "ITEM: TIMESTEP\n");
   fprintf(fp,BIGINT_FORMAT "\n",update->ntimestep);
   fprintf(fp,"ITEM: NUMBER OF CELLS\n");
   fprintf(fp,BIGINT_FORMAT "\n",ndump);
@@ -271,7 +289,7 @@ void DumpGrid::header_item(bigint ndump)
   fprintf(fp,"%g %g\n",boxxlo,boxxhi);
   fprintf(fp,"%g %g\n",boxylo,boxyhi);
   fprintf(fp,"%g %g\n",boxzlo,boxzhi);
-  fprintf(fp,"ITEM: CELLS %s\n",columns);
+  fprintf(fp,"ITEM: CELLS %s\n",columns);*/
 }
 
 /* ---------------------------------------------------------------------- */
@@ -294,8 +312,8 @@ int DumpGrid::count()
   if (ncompute) {
     for (int i = 0; i < ncompute; i++)
       if (!(compute[i]->invoked_flag & INVOKED_PER_GRID)) {
-	compute[i]->compute_per_grid();
-	compute[i]->invoked_flag |= INVOKED_PER_GRID;
+        compute[i]->compute_per_grid();
+        compute[i]->invoked_flag |= INVOKED_PER_GRID;
       }
   }
 
@@ -384,6 +402,9 @@ int DumpGrid::parse_fields(int narg, char **arg)
     } else if (strcmp(arg[iarg],"idstr") == 0) {
       pack_choice[i] = &DumpGrid::pack_id;
       vtype[i] = STRING;
+    } else if (strcmp(arg[iarg],"split") == 0) {
+      pack_choice[i] = &DumpGrid::pack_split;
+      vtype[i] = INT;
     } else if (strcmp(arg[iarg],"proc") == 0) {
       pack_choice[i] = &DumpGrid::pack_proc;
       vtype[i] = INT;
@@ -396,7 +417,7 @@ int DumpGrid::parse_fields(int narg, char **arg)
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"zlo") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump grid field for 2d simulation");
+        error->all(FLERR,"Invalid dump grid field for 2d simulation");
       pack_choice[i] = &DumpGrid::pack_zlo;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"xhi") == 0) {
@@ -407,7 +428,7 @@ int DumpGrid::parse_fields(int narg, char **arg)
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"zhi") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump grid field for 2d simulation");
+        error->all(FLERR,"Invalid dump grid field for 2d simulation");
       pack_choice[i] = &DumpGrid::pack_zhi;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"xc") == 0) {
@@ -418,12 +439,50 @@ int DumpGrid::parse_fields(int narg, char **arg)
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"zc") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump grid field for 2d simulation");
+        error->all(FLERR,"Invalid dump grid field for 2d simulation");
       pack_choice[i] = &DumpGrid::pack_zc;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"vol") == 0) {
       pack_choice[i] = &DumpGrid::pack_vol;
       vtype[i] = DOUBLE;
+
+    // custom grid vector or array
+    // if no trailing [], then arg is set to 0, else arg is int between []
+
+    } else if (strncmp(arg[iarg],"g_",2) == 0) {
+      pack_choice[i] = &DumpGrid::pack_custom;
+
+      int n = strlen(arg[iarg]);
+      char *suffix = new char[n];
+      strcpy(suffix,&arg[iarg][2]);
+
+      char *ptr = strchr(suffix,'[');
+      if (ptr) {
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump grid command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
+      } else argindex[i] = 0;
+
+      n = grid->find_custom(suffix);
+      if (n < 0)
+        error->all(FLERR,"Could not find dump grid custom attribute");
+
+      vtype[i] = grid->etype[n];
+      if (argindex[i] == 0 && grid->esize[n] > 0)
+        error->all(FLERR,
+                   "Dump grid custom attribute does not store "
+                   "per-grid vector");
+      if (argindex[i] > 0 && grid->esize[n] == 0)
+        error->all(FLERR,
+                   "Dump grid custom attribute does not store "
+                   "per-grid array");
+      if (argindex[i] > 0 && argindex[i] > grid->esize[n])
+        error->all(FLERR,
+                   "Dump grid custom attribute is accessed out-of-range");
+
+      field2index[i] = add_custom(suffix);
+      delete [] suffix;
 
     // compute value = c_ID
     // if no trailing [], then index = 0, else index = int between []
@@ -438,24 +497,24 @@ int DumpGrid::parse_fields(int narg, char **arg)
 
       char *ptr = strchr(suffix,'[');
       if (ptr) {
-	if (suffix[strlen(suffix)-1] != ']')
-	  error->all(FLERR,"Invalid attribute in dump grid command");
-	argindex[i] = atoi(ptr+1);
-	*ptr = '\0';
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump grid command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
       } else argindex[i] = 0;
 
       n = modify->find_compute(suffix);
       if (n < 0) error->all(FLERR,"Could not find dump grid compute ID");
       if (modify->compute[n]->per_grid_flag == 0)
-	error->all(FLERR,"Dump grid compute does not compute per-grid info");
+        error->all(FLERR,"Dump grid compute does not compute per-grid info");
       if (argindex[i] == 0 && modify->compute[n]->size_per_grid_cols != 0)
-	error->all(FLERR,"Dump grid compute does not calculate "
+        error->all(FLERR,"Dump grid compute does not calculate "
                    "per-grid vector");
       if (argindex[i] > 0 && modify->compute[n]->size_per_grid_cols == 0)
-	error->all(FLERR,"Dump grid compute does not calculate per-grid array");
+        error->all(FLERR,"Dump grid compute does not calculate per-grid array");
       if (argindex[i] > 0 &&
           argindex[i] > modify->compute[n]->size_per_grid_cols)
-	error->all(FLERR,"Dump grid compute array is accessed out-of-range");
+        error->all(FLERR,"Dump grid compute array is accessed out-of-range");
 
       field2index[i] = add_compute(suffix);
       delete [] suffix;
@@ -474,22 +533,22 @@ int DumpGrid::parse_fields(int narg, char **arg)
 
       char *ptr = strchr(suffix,'[');
       if (ptr) {
-	if (suffix[strlen(suffix)-1] != ']')
-	  error->all(FLERR,"Invalid attribute in dump grid command");
-	argindex[i] = atoi(ptr+1);
-	*ptr = '\0';
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump grid command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
       } else argindex[i] = 0;
 
       n = modify->find_fix(suffix);
       if (n < 0) error->all(FLERR,"Could not find dump grid fix ID");
       if (modify->fix[n]->per_grid_flag == 0)
-	error->all(FLERR,"Dump grid fix does not compute per-grid info");
+        error->all(FLERR,"Dump grid fix does not compute per-grid info");
       if (argindex[i] == 0 && modify->fix[n]->size_per_grid_cols != 0)
-	error->all(FLERR,"Dump grid fix does not calculate a per-grid vector");
+        error->all(FLERR,"Dump grid fix does not calculate a per-grid vector");
       if (argindex[i] > 0 && modify->fix[n]->size_per_grid_cols == 0)
-	error->all(FLERR,"Dump grid fix does not calculate per-grid array");
+        error->all(FLERR,"Dump grid fix does not calculate per-grid array");
       if (argindex[i] > 0 && argindex[i] > modify->fix[n]->size_per_grid_cols)
-	error->all(FLERR,"Dump grid fix array is accessed out-of-range");
+        error->all(FLERR,"Dump grid fix array is accessed out-of-range");
 
       field2index[i] = add_fix(suffix);
       delete [] suffix;
@@ -509,7 +568,7 @@ int DumpGrid::parse_fields(int narg, char **arg)
       n = input->variable->find(suffix);
       if (n < 0) error->all(FLERR,"Could not find dump grid variable name");
       if (input->variable->grid_style(n) == 0)
-	error->all(FLERR,"Dump grid variable is not grid-style variable");
+        error->all(FLERR,"Dump grid variable is not grid-style variable");
 
       field2index[i] = add_variable(suffix);
       delete [] suffix;
@@ -518,6 +577,31 @@ int DumpGrid::parse_fields(int narg, char **arg)
   }
 
   return narg;
+}
+
+/* ----------------------------------------------------------------------
+   add Custom ID to list of grid custom attribute IDs used by dump
+   return index of where this custom attribute is in list
+   if already in list, do not add, just return index, else add to list
+------------------------------------------------------------------------- */
+
+int DumpGrid::add_custom(char *id)
+{
+  int icustom;
+  for (icustom = 0; icustom < ncustom; icustom++)
+    if (strcmp(id,id_custom[icustom]) == 0) break;
+  if (icustom < ncustom) return icustom;
+
+  id_custom = (char **)
+    memory->srealloc(id_custom,(ncustom+1)*sizeof(char *),"dump:id_custom");
+  delete [] custom;
+  custom = new int[ncustom+1];
+
+  int n = strlen(id) + 1;
+  id_custom[ncustom] = new char[n];
+  strcpy(id_custom[ncustom],id);
+  ncustom++;
+  return ncustom-1;
 }
 
 /* ----------------------------------------------------------------------
@@ -585,7 +669,7 @@ int DumpGrid::add_variable(char *id)
 
   id_variable = (char **)
     memory->srealloc(id_variable,(nvariable+1)*sizeof(char *),
-		     "dump:id_variable");
+                     "dump:id_variable");
   delete [] variable;
   variable = new int[nvariable+1];
   delete [] vbuf;
@@ -704,6 +788,47 @@ void DumpGrid::pack_variable(int n)
 }
 
 /* ----------------------------------------------------------------------
+   extraction of grid custom attribute
+------------------------------------------------------------------------- */
+
+void DumpGrid::pack_custom(int n)
+{
+  int index = custom[field2index[n]];
+
+  if (grid->etype[index] == INT) {
+    if (grid->esize[index] == 0) {
+      int *vector = grid->eivec[grid->ewhich[index]];
+      for (int i = 0; i < ncpart; i++) {
+        buf[n] = vector[cpart[i]];
+        n += size_one;
+      }
+    } else {
+      int icol = argindex[n]-1;
+      int **array = grid->eiarray[grid->ewhich[index]];
+      for (int i = 0; i < ncpart; i++) {
+        buf[n] = array[cpart[i]][icol];
+        n += size_one;
+      }
+    }
+  } else {
+    if (grid->esize[index] == 0) {
+      double *vector = grid->edvec[grid->ewhich[index]];
+      for (int i = 0; i < ncpart; i++) {
+        buf[n] = vector[cpart[i]];
+        n += size_one;
+      }
+    } else {
+      int icol = argindex[n]-1;
+      double **array = grid->edarray[grid->ewhich[index]];
+      for (int i = 0; i < ncpart; i++) {
+        buf[n] = array[cpart[i]][icol];
+        n += size_one;
+      }
+    }
+  }
+}
+
+/* ----------------------------------------------------------------------
    one method for every attribute dump grid can output
    the grid property is packed into buf starting at n with stride size_one
    customize a new attribute by adding a method
@@ -717,6 +842,21 @@ void DumpGrid::pack_id(int n)
 
   for (int i = 0; i < ncpart; i++) {
     buf[n] = cells[cpart[i]].id;
+    n += size_one;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void DumpGrid::pack_split(int n)
+{
+  Grid::ChildCell *cells = grid->cells;
+
+  for (int i = 0; i < ncpart; i++) {
+    // convert to human readable format:
+    //   split = 0: unsplit cell
+    //   split = 1..N: split cell index + 1
+    buf[n] = -cells[cpart[i]].nsplit + 1;
     n += size_one;
   }
 }

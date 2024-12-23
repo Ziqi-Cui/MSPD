@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #ifndef KOKKOS_TEST_SCATTER_VIEW_HPP
 #define KOKKOS_TEST_SCATTER_VIEW_HPP
@@ -67,6 +39,8 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
 
   using orig_view_type = Kokkos::View<NumberType * [12], Layout, DeviceType>;
 
+  using size_type = typename Kokkos::HostSpace::size_type;
+
   scatter_view_type scatter_view;
   int scatterSize;
 
@@ -79,21 +53,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
-      host_view(i, 0)  = 0.0;
-      host_view(i, 1)  = 0.0;
-      host_view(i, 2)  = 0.0;
-      host_view(i, 3)  = 0.0;
-      host_view(i, 4)  = 0.0;
-      host_view(i, 5)  = 0.0;
-      host_view(i, 6)  = 0.0;
-      host_view(i, 7)  = 0.0;
-      host_view(i, 8)  = 0.0;
-      host_view(i, 9)  = 0.0;
-      host_view(i, 10) = 0.0;
-      host_view(i, 11) = 0.0;
-    }
+    Kokkos::deep_copy(host_view, 0);
     Kokkos::fence();
     Kokkos::deep_copy(orig, host_view);
   }
@@ -102,7 +62,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     scatterSize = n;
     auto policy =
         Kokkos::RangePolicy<typename DeviceType::execution_space, int>(0, n);
-    Kokkos::parallel_for(policy, *this, "scatter_view_test: Sum");
+    Kokkos::parallel_for("scatter_view_test: Sum", policy, *this);
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -131,34 +91,40 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
-      auto val0  = host_view(i, 0);
-      auto val1  = host_view(i, 1);
-      auto val2  = host_view(i, 2);
-      auto val3  = host_view(i, 3);
-      auto val4  = host_view(i, 4);
-      auto val5  = host_view(i, 5);
-      auto val6  = host_view(i, 6);
-      auto val7  = host_view(i, 7);
-      auto val8  = host_view(i, 8);
-      auto val9  = host_view(i, 9);
-      auto val10 = host_view(i, 10);
-      auto val11 = host_view(i, 11);
-      EXPECT_NEAR(val0, NumberType(80), 1e-14);
-      EXPECT_NEAR(val1, NumberType(20), 1e-14);
-      EXPECT_NEAR(val2, NumberType(-20), 1e-14);
-      EXPECT_NEAR(val3, NumberType(20), 1e-14);
-      EXPECT_NEAR(val4, NumberType(-20), 1e-14);
-      EXPECT_NEAR(val5, NumberType(-100), 1e-14);
-      EXPECT_NEAR(val6, NumberType(40), 1e-14);
-      EXPECT_NEAR(val7, NumberType(20), 1e-14);
-      EXPECT_NEAR(val8, NumberType(-20), 1e-14);
-      EXPECT_NEAR(val9, NumberType(-20), 1e-14);
-      EXPECT_NEAR(val10, NumberType(20), 1e-14);
-      EXPECT_NEAR(val11, NumberType(-60), 1e-14);
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
+      for (size_type j = 0; j < host_view.extent(1); ++j) {
+        EXPECT_NEAR(host_view(i, j), NumberType(ref[j]), 1e-14)
+            << "Data differs at indices " << i << ", " << j;
+      }
     }
   }
+
+  // check for correct padding
+  void validateResultsForSubview(
+      orig_view_type orig, std::pair<size_type, size_type>& subRangeDim0,
+      std::pair<size_type, size_type>& subRangeDim1) {
+    auto host_view =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
+    Kokkos::fence();
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
+      for (size_type j = 0; j < host_view.extent(1); ++j) {
+        auto val = host_view(i, j);
+        if ((i >= std::get<0>(subRangeDim0) && i < std::get<1>(subRangeDim0)) &&
+            (j >= std::get<0>(subRangeDim1) && j < std::get<1>(subRangeDim1))) {
+          // is in subview
+          EXPECT_NEAR(val, NumberType(ref[j]), 1e-14)
+              << "Data differs at indices " << i << ", " << j;
+        } else {
+          // is outside of subview
+          EXPECT_NEAR(val, NumberType(0), 1e-14)
+              << "Data differs at indices " << i << ", " << j;
+        }
+      }
+    }
+  }
+
+ private:
+  NumberType ref[12] = {80, 20, -20, 20, -20, -100, 40, 20, -20, -20, 20, -60};
 };
 
 template <typename DeviceType, typename Layout, typename Duplication,
@@ -174,6 +140,8 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
 
   using orig_view_type = Kokkos::View<NumberType * [3], Layout, DeviceType>;
 
+  using size_type = typename Kokkos::HostSpace::size_type;
+
   scatter_view_type scatter_view;
   int scatterSize;
 
@@ -186,8 +154,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       host_view(i, 0) = 1.0;
       host_view(i, 1) = 1.0;
       host_view(i, 2) = 1.0;
@@ -200,7 +167,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     scatterSize = n;
     auto policy =
         Kokkos::RangePolicy<typename DeviceType::execution_space, int>(0, n);
-    Kokkos::parallel_for(policy, *this, "scatter_view_test: Prod");
+    Kokkos::parallel_for("scatter_view_test: Prod", policy, *this);
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -220,14 +187,43 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       auto val0 = host_view(i, 0);
       auto val1 = host_view(i, 1);
       auto val2 = host_view(i, 2);
-      EXPECT_TRUE(std::fabs((val0 - 65536.0) / 65536.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val1 - 256.0) / 256.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val2 - 1.0) / 1.0) < 1e-14);
+      EXPECT_NEAR(val0, 65536.0, 1e-14 * 65536.0)
+          << "Data differs at index " << i;
+      EXPECT_NEAR(val1, 256.0, 1e-14 * 256.0) << "Data differs at index " << i;
+      EXPECT_NEAR(val2, 1.0, 1e-14 * 1.0) << "Data differs at index " << i;
+    }
+  }
+
+  // check for correct padding
+  void validateResultsForSubview(
+      orig_view_type orig, std::pair<size_type, size_type>& subRangeDim0,
+      std::pair<size_type, size_type>& subRangeDim1) {
+    (void)subRangeDim1;
+    auto host_view =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
+    Kokkos::fence();
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
+      auto val0 = host_view(i, 0);
+      auto val1 = host_view(i, 1);
+      auto val2 = host_view(i, 2);
+      if (i >= std::get<0>(subRangeDim0) && i < std::get<1>(subRangeDim0)) {
+        // is in subview
+        EXPECT_NEAR(val0, 65536.0, 1e-14 * 65536.0);
+        EXPECT_NEAR(val1, 256.0, 1e-14 * 256.0);
+        EXPECT_NEAR(val2, 1.0, 1e-14 * 1.0);
+      } else {
+        // is outside of subview
+        EXPECT_NEAR(val0, NumberType(1), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val1, NumberType(1), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val2, NumberType(1), 1e-14)
+            << "Data differs at index " << i;
+      }
     }
   }
 };
@@ -245,6 +241,8 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
 
   using orig_view_type = Kokkos::View<NumberType * [3], Layout, DeviceType>;
 
+  using size_type = typename Kokkos::HostSpace::size_type;
+
   scatter_view_type scatter_view;
   int scatterSize;
 
@@ -257,8 +255,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       host_view(i, 0) = 999999.0;
       host_view(i, 1) = 999999.0;
       host_view(i, 2) = 999999.0;
@@ -271,7 +268,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     scatterSize = n;
     auto policy =
         Kokkos::RangePolicy<typename DeviceType::execution_space, int>(0, n);
-    Kokkos::parallel_for(policy, *this, "scatter_view_test: Prod");
+    Kokkos::parallel_for("scatter_view_test: Prod", policy, *this);
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -291,14 +288,42 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       auto val0 = host_view(i, 0);
       auto val1 = host_view(i, 1);
       auto val2 = host_view(i, 2);
-      EXPECT_TRUE(std::fabs((val0 - 4.0) / 4.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val1 - 2.0) / 2.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val2 - 1.0) / 1.0) < 1e-14);
+      EXPECT_NEAR(val0, 4.0, 1e-14 * 4.0) << "Data differs at index " << i;
+      EXPECT_NEAR(val1, 2.0, 1e-14 * 2.0) << "Data differs at index " << i;
+      EXPECT_NEAR(val2, 1.0, 1e-14 * 1.0) << "Data differs at index " << i;
+    }
+  }
+
+  // check for correct padding
+  void validateResultsForSubview(
+      orig_view_type orig, std::pair<size_type, size_type>& subRangeDim0,
+      std::pair<size_type, size_type>& subRangeDim1) {
+    (void)subRangeDim1;
+    auto host_view =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
+    Kokkos::fence();
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
+      auto val0 = host_view(i, 0);
+      auto val1 = host_view(i, 1);
+      auto val2 = host_view(i, 2);
+      if (i >= std::get<0>(subRangeDim0) && i < std::get<1>(subRangeDim0)) {
+        // is in subview
+        EXPECT_NEAR(val0, 4.0, 1e-14 * 4.0) << "Data differs at index " << i;
+        EXPECT_NEAR(val1, 2.0, 1e-14 * 2.0) << "Data differs at index " << i;
+        EXPECT_NEAR(val2, 1.0, 1e-14 * 1.0) << "Data differs at index " << i;
+      } else {
+        // is outside of subview
+        EXPECT_NEAR(val0, NumberType(999999), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val1, NumberType(999999), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val2, NumberType(999999), 1e-14)
+            << "Data differs at index " << i;
+      }
     }
   }
 };
@@ -316,6 +341,8 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
 
   using orig_view_type = Kokkos::View<NumberType * [3], Layout, DeviceType>;
 
+  using size_type = typename Kokkos::HostSpace::size_type;
+
   scatter_view_type scatter_view;
   int scatterSize;
 
@@ -328,8 +355,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       host_view(i, 0) = 0.0;
       host_view(i, 1) = 0.0;
       host_view(i, 2) = 0.0;
@@ -341,7 +367,7 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
   void run_parallel(int n) {
     scatterSize = n;
     Kokkos::RangePolicy<typename DeviceType::execution_space, int> policy(0, n);
-    Kokkos::parallel_for(policy, *this, "scatter_view_test: Prod");
+    Kokkos::parallel_for("scatter_view_test: Prod", policy, *this);
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -361,14 +387,98 @@ struct test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
     auto host_view =
         Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
     Kokkos::fence();
-    for (typename decltype(host_view)::size_type i = 0; i < host_view.extent(0);
-         ++i) {
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
       auto val0 = host_view(i, 0);
       auto val1 = host_view(i, 1);
       auto val2 = host_view(i, 2);
-      EXPECT_TRUE(std::fabs((val0 - 16.0) / 16.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val1 - 8.0) / 8.0) < 1e-14);
-      EXPECT_TRUE(std::fabs((val2 - 4.0) / 4.0) < 1e-14);
+      EXPECT_NEAR(val0, 16.0, 1e-14 * 16.0) << "Data differs at index " << i;
+      EXPECT_NEAR(val1, 8.0, 1e-14 * 8.0) << "Data differs at index " << i;
+      EXPECT_NEAR(val2, 4.0, 1e-14 * 4.0) << "Data differs at index " << i;
+    }
+  }
+
+  // check for correct padding
+  void validateResultsForSubview(
+      orig_view_type orig, std::pair<size_type, size_type>& subRangeDim0,
+      std::pair<size_type, size_type>& subRangeDim1) {
+    (void)subRangeDim1;
+    auto host_view =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), orig);
+    Kokkos::fence();
+    for (size_type i = 0; i < host_view.extent(0); ++i) {
+      auto val0 = host_view(i, 0);
+      auto val1 = host_view(i, 1);
+      auto val2 = host_view(i, 2);
+      if (i >= std::get<0>(subRangeDim0) && i < std::get<1>(subRangeDim0)) {
+        // is in subview
+        EXPECT_NEAR(val0, 16.0, 1e-14 * 16.0) << "Data differs at index " << i;
+        EXPECT_NEAR(val1, 8.0, 1e-14 * 8.0) << "Data differs at index " << i;
+        EXPECT_NEAR(val2, 4.0, 1e-14 * 4.0) << "Data differs at index " << i;
+      } else {
+        // is outside of subview
+        EXPECT_NEAR(val0, NumberType(0), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val1, NumberType(0), 1e-14)
+            << "Data differs at index " << i;
+        EXPECT_NEAR(val2, NumberType(0), 1e-14)
+            << "Data differs at index " << i;
+      }
+    }
+  }
+};
+
+// Test ScatterView on subview
+template <typename DeviceType, typename Layout, typename Op,
+          typename NumberType>
+struct test_default_scatter_sub_view {
+ public:
+  using default_duplication = Kokkos::Impl::Experimental::DefaultDuplication<
+      typename DeviceType::execution_space>;
+  using Duplication  = typename default_duplication::type;
+  using Contribution = typename Kokkos::Impl::Experimental::DefaultContribution<
+      typename DeviceType::execution_space, Duplication>::type;
+  using scatter_view_def =
+      typename test_scatter_view_impl_cls<DeviceType, Layout, Duplication,
+                                          Contribution, Op,
+                                          NumberType>::scatter_view_type;
+  using orig_view_def =
+      typename test_scatter_view_impl_cls<DeviceType, Layout, Duplication,
+                                          Contribution, Op,
+                                          NumberType>::orig_view_type;
+
+  using size_type = typename Kokkos::HostSpace::size_type;
+
+  void run_test(int n) {
+    // Test creation via create_scatter_view overload 1
+    {
+      orig_view_def original_view("original_view", n);
+
+      auto rangeDim0 = std::pair<size_type, size_type>(0 + 1, n - 1);
+      auto rangeDim1 =
+          std::pair<size_type, size_type>(0, original_view.extent(1));
+
+      auto original_sub_view =
+          Kokkos::subview(original_view, rangeDim0, rangeDim1);
+
+      scatter_view_def scatter_view =
+          Kokkos::Experimental::create_scatter_view(Op{}, original_sub_view);
+
+      test_scatter_view_impl_cls<DeviceType, Layout, Duplication, Contribution,
+                                 Op, NumberType>
+          scatter_view_test_impl(scatter_view);
+      scatter_view_test_impl.initialize(original_view);
+      scatter_view_test_impl.run_parallel(original_sub_view.extent(0));
+
+      Kokkos::Experimental::contribute(original_sub_view, scatter_view);
+      scatter_view.reset_except(original_sub_view);
+
+      scatter_view_test_impl.run_parallel(original_sub_view.extent(0));
+
+      Kokkos::Experimental::contribute(original_sub_view, scatter_view);
+      Kokkos::fence();
+
+      scatter_view_test_impl.validateResultsForSubview(original_view, rangeDim0,
+                                                       rangeDim1);
     }
   }
 };
@@ -436,6 +546,10 @@ struct test_scatter_view_config {
       typename test_scatter_view_impl_cls<DeviceType, Layout, Duplication,
                                           Contribution, Op,
                                           NumberType>::orig_view_type;
+
+  void compile_constructor() {
+    auto sv = scatter_view_def(Kokkos::view_alloc(DeviceType{}, "label"), 10);
+  }
 
   void run_test(int n) {
     // test allocation
@@ -583,18 +697,9 @@ struct TestDuplicatedScatterView<
 };
 #endif
 
-#ifdef KOKKOS_ENABLE_ROCM
-// disable duplicated instantiation with ROCm until
-// UniqueToken can support it
-template <typename ScatterType>
-struct TestDuplicatedScatterView<Kokkos::Experimental::ROCm, ScatterType> {
-  TestDuplicatedScatterView(int) {}
-};
-#endif
-
 template <typename DeviceType, typename ScatterType,
           typename NumberType = double>
-void test_scatter_view(int n) {
+void test_scatter_view(int64_t n) {
   using execution_space = typename DeviceType::execution_space;
 
   // no atomics or duplication is only sensible if the execution space
@@ -630,7 +735,7 @@ void test_scatter_view(int n) {
   constexpr std::size_t bytes_per_value = sizeof(NumberType) * 12;
   std::size_t const maximum_allowed_copy_values =
       maximum_allowed_copy_bytes / bytes_per_value;
-  n = std::min(n, int(maximum_allowed_copy_values));
+  n = std::min(n, int64_t(maximum_allowed_copy_values));
 
   // if the default is duplicated, this needs to follow the limit
   {
@@ -639,14 +744,24 @@ void test_scatter_view(int n) {
         test_default_sv;
     test_default_sv.run_test(n);
   }
+
+  // run same test but on a subview (this covers support for padded
+  // ScatterViews)
+  {
+    test_default_scatter_sub_view<DeviceType, Kokkos::LayoutRight, ScatterType,
+                                  NumberType>
+        test_default_scatter_view_subview;
+    test_default_scatter_view_subview.run_test(n);
+  }
+
   TestDuplicatedScatterView<DeviceType, ScatterType, NumberType> duptest(n);
 }
 
 TEST(TEST_CATEGORY, scatterview) {
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum, double>(
       10);
-  test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum,
-                    unsigned int>(10);
+
+  test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum, int>(10);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterProd>(10);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterMin>(10);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterMax>(10);
@@ -663,10 +778,11 @@ TEST(TEST_CATEGORY, scatterview) {
 #endif
 
 #endif
+
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum, double>(
       big_n);
-  test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum,
-                    unsigned int>(big_n);
+  test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterSum, int>(
+      big_n);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterProd>(big_n);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterMin>(big_n);
   test_scatter_view<TEST_EXECSPACE, Kokkos::Experimental::ScatterMax>(big_n);
@@ -677,38 +793,45 @@ TEST(TEST_CATEGORY, scatterview_devicetype) {
       Kokkos::Device<TEST_EXECSPACE, typename TEST_EXECSPACE::memory_space>;
 
   test_scatter_view<device_type, Kokkos::Experimental::ScatterSum, double>(10);
-  test_scatter_view<device_type, Kokkos::Experimental::ScatterSum,
-                    unsigned int>(10);
+  test_scatter_view<device_type, Kokkos::Experimental::ScatterSum, int>(10);
   test_scatter_view<device_type, Kokkos::Experimental::ScatterProd>(10);
   test_scatter_view<device_type, Kokkos::Experimental::ScatterMin>(10);
   test_scatter_view<device_type, Kokkos::Experimental::ScatterMax>(10);
 
+#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP)
 #ifdef KOKKOS_ENABLE_CUDA
-  if (std::is_same<TEST_EXECSPACE, Kokkos::Cuda>::value) {
-    using cuda_device_type = Kokkos::Device<Kokkos::Cuda, Kokkos::CudaSpace>;
-    test_scatter_view<cuda_device_type, Kokkos::Experimental::ScatterSum,
+  using device_execution_space = Kokkos::Cuda;
+  using device_memory_space    = Kokkos::CudaSpace;
+  using host_accessible_space  = Kokkos::CudaUVMSpace;
+#else
+  using device_execution_space = Kokkos::HIP;
+  using device_memory_space    = Kokkos::HIPSpace;
+  using host_accessible_space  = Kokkos::HIPManagedSpace;
+#endif
+  if (std::is_same<TEST_EXECSPACE, device_execution_space>::value) {
+    using device_device_type =
+        Kokkos::Device<device_execution_space, device_memory_space>;
+    test_scatter_view<device_device_type, Kokkos::Experimental::ScatterSum,
                       double>(10);
-    test_scatter_view<cuda_device_type, Kokkos::Experimental::ScatterSum,
-                      unsigned int>(10);
-    test_scatter_view<cuda_device_type, Kokkos::Experimental::ScatterProd>(10);
-    test_scatter_view<cuda_device_type, Kokkos::Experimental::ScatterMin>(10);
-    test_scatter_view<cuda_device_type, Kokkos::Experimental::ScatterMax>(10);
-    using cudauvm_device_type =
-        Kokkos::Device<Kokkos::Cuda, Kokkos::CudaUVMSpace>;
-    test_scatter_view<cudauvm_device_type, Kokkos::Experimental::ScatterSum,
+    test_scatter_view<device_device_type, Kokkos::Experimental::ScatterSum,
+                      int>(10);
+    test_scatter_view<device_device_type, Kokkos::Experimental::ScatterProd>(
+        10);
+    test_scatter_view<device_device_type, Kokkos::Experimental::ScatterMin>(10);
+    test_scatter_view<device_device_type, Kokkos::Experimental::ScatterMax>(10);
+    using host_device_type =
+        Kokkos::Device<device_execution_space, host_accessible_space>;
+    test_scatter_view<host_device_type, Kokkos::Experimental::ScatterSum,
                       double>(10);
-    test_scatter_view<cudauvm_device_type, Kokkos::Experimental::ScatterSum,
-                      unsigned int>(10);
-    test_scatter_view<cudauvm_device_type, Kokkos::Experimental::ScatterProd>(
+    test_scatter_view<host_device_type, Kokkos::Experimental::ScatterSum, int>(
         10);
-    test_scatter_view<cudauvm_device_type, Kokkos::Experimental::ScatterMin>(
-        10);
-    test_scatter_view<cudauvm_device_type, Kokkos::Experimental::ScatterMax>(
-        10);
+    test_scatter_view<host_device_type, Kokkos::Experimental::ScatterProd>(10);
+    test_scatter_view<host_device_type, Kokkos::Experimental::ScatterMin>(10);
+    test_scatter_view<host_device_type, Kokkos::Experimental::ScatterMax>(10);
   }
 #endif
 }
 
 }  // namespace Test
 
-#endif  // KOKKOS_TEST_UNORDERED_MAP_HPP
+#endif  // KOKKOS_TEST_SCATTER_VIEW_HPP

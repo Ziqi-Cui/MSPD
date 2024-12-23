@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -21,6 +21,7 @@
 #include "modify.h"
 #include "memory.h"
 #include "error.h"
+#include "comm.h"
 
 using namespace SPARTA_NS;
 
@@ -56,6 +57,8 @@ ComputeGrid::ComputeGrid(SPARTA *sparta, int narg, char **arg) :
 
   nvalue = narg - 4;
   value = new int[nvalue];
+
+  tvib_flag = 0;
 
   npergroup = cellmass = cellcount = 0;
   unique = new int[LASTSIZE];
@@ -137,6 +140,7 @@ ComputeGrid::ComputeGrid(SPARTA *sparta, int narg, char **arg) :
       value[ivalue] = TVIB;
       set_map(ivalue,ENGVIB);
       set_map(ivalue,DOFVIB);
+      tvib_flag = 1;
     } else if (strcmp(arg[iarg],"pxrho") == 0) {
       value[ivalue] = PXRHO;
       set_map(ivalue,MVX);
@@ -193,6 +197,11 @@ void ComputeGrid::init()
 {
   if (ngroup != particle->mixture[imix]->ngroup)
     error->all(FLERR,"Number of groups in compute grid mixture has changed");
+
+  if (tvib_flag && particle->find_custom((char *) "vibmode") >= 0)
+    if (comm->me == 0)
+      error->warning(FLERR,"Using compute grid tvib with fix vibmode may give "
+                     "incorrect temperature, use compute tvib/grid instead");
 
   eprefactor = 0.5*update->mvv2e;
   tprefactor = update->mvv2e / (3.0*update->boltz);

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -16,7 +16,9 @@
 #include "stdlib.h"
 #include "compute_reduce.h"
 #include "update.h"
+#include "domain.h"
 #include "particle.h"
+#include "mixture.h"
 #include "grid.h"
 #include "surf.h"
 #include "modify.h"
@@ -26,14 +28,13 @@
 #include "memory.h"
 #include "error.h"
 
-// DEBUG
-#include "comm.h"
-
 using namespace SPARTA_NS;
 
-enum{SUM,SUMSQ,MINN,MAXX,AVE,AVESQ};
-enum{X,V,KE,EROT,EVIB,COMPUTE,FIX,VARIABLE};
+enum{SUM,SUMSQ,MINN,MAXX,AVE,AVESQ,SUMAREA,AVEAREA};
+enum{X,V,KE,EROT,EVIB,COMPUTE,FIX,VARIABLE,PCUSTOM,GCUSTOM,SCUSTOM};
 enum{PARTICLE,GRID,SURF};
+
+enum{INT,DOUBLE};                       // several files
 
 #define INVOKED_PER_PARTICLE 8
 #define INVOKED_PER_GRID 16
@@ -54,9 +55,12 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
   else if (strcmp(arg[2],"max") == 0) mode = MAXX;
   else if (strcmp(arg[2],"ave") == 0) mode = AVE;
   else if (strcmp(arg[2],"avesq") == 0) mode = AVESQ;
+  else if (strcmp(arg[2],"sum-area") == 0) mode = SUMAREA;
+  else if (strcmp(arg[2],"ave-area") == 0) mode = AVEAREA;
   else error->all(FLERR,"Illegal compute reduce command");
 
   MPI_Comm_rank(world,&me);
+  MPI_Comm_size(world,&nprocs);
 
   // expand args if any have wildcard character "*"
 
@@ -112,10 +116,16 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
 
     } else if (strncmp(arg[iarg],"c_",2) == 0 ||
                strncmp(arg[iarg],"f_",2) == 0 ||
-               strncmp(arg[iarg],"v_",2) == 0) {
+               strncmp(arg[iarg],"v_",2) == 0 ||
+               strncmp(arg[iarg],"p_",2) == 0 ||
+               strncmp(arg[iarg],"g_",2) == 0 ||
+               strncmp(arg[iarg],"s_",2) == 0) {
       if (arg[iarg][0] == 'c') which[nvalues] = COMPUTE;
       else if (arg[iarg][0] == 'f') which[nvalues] = FIX;
       else if (arg[iarg][0] == 'v') which[nvalues] = VARIABLE;
+      else if (arg[iarg][0] == 'p') which[nvalues] = PCUSTOM;
+      else if (arg[iarg][0] == 'g') which[nvalues] = GCUSTOM;
+      else if (arg[iarg][0] == 's') which[nvalues] = SCUSTOM;
 
       int n = strlen(arg[iarg]);
       char *suffix = new char[n];
@@ -144,6 +154,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
 
   replace = new int[nvalues];
   for (int i = 0; i < nvalues; i++) replace[i] = -1;
+  subsetID = NULL;
 
   while (iarg < nargnew) {
     if (strcmp(arg[iarg],"replace") == 0) {
@@ -159,6 +170,12 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
         error->all(FLERR,"Invalid replace values in compute reduce");
       replace[col1] = col2;
       iarg += 3;
+    } else if (strcmp(arg[iarg],"subset") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal compute reduce command");
+      int n = strlen(arg[iarg+1]) + 1;
+      subsetID = new char[n];
+      strcpy(subsetID,arg[iarg+1]);
+      iarg += 2;
     } else error->all(FLERR,"Illegal compute reduce command");
   }
 
@@ -189,6 +206,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
       int icompute = modify->find_compute(ids[i]);
       if (icompute < 0)
         error->all(FLERR,"Compute ID for compute reduce does not exist");
+
       if (modify->compute[icompute]->per_particle_flag) {
         flavor[i] = PARTICLE;
         if (argindex[i] == 0 &&
@@ -203,6 +221,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
             argindex[i] > modify->compute[icompute]->size_per_particle_cols)
           error->all(FLERR,
                      "Compute reduce compute array is accessed out-of-range");
+
       } else if (modify->compute[icompute]->per_grid_flag) {
         flavor[i] = GRID;
         if (argindex[i] == 0 &&
@@ -216,13 +235,28 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
             argindex[i] > modify->compute[icompute]->size_per_grid_cols)
           error->all(FLERR,
                      "Compute reduce compute array is accessed out-of-range");
-      } else error->all(FLERR,"Compute reduce compute calculates "
-                        "global or surf values");
+
+      } else if (modify->compute[icompute]->per_surf_flag) {
+        flavor[i] = SURF;
+        if (argindex[i] == 0 &&
+            modify->compute[icompute]->size_per_surf_cols != 0)
+          error->all(FLERR,"Compute reduce compute does not "
+                     "calculate a per-surf vector");
+        if (argindex[i] && modify->compute[icompute]->size_per_surf_cols == 0)
+          error->all(FLERR,"Compute reduce compute does not "
+                     "calculate a per-surf array");
+        if (argindex[i] &&
+            argindex[i] > modify->compute[icompute]->size_per_surf_cols)
+          error->all(FLERR,
+                     "Compute reduce compute array is accessed out-of-range");
+	
+      } else error->all(FLERR,"Compute reduce compute calculates global values");
 
     } else if (which[i] == FIX) {
       int ifix = modify->find_fix(ids[i]);
       if (ifix < 0)
         error->all(FLERR,"Fix ID for compute reduce does not exist");
+
       if (modify->fix[ifix]->per_particle_flag) {
         flavor[i] = PARTICLE;
         if (argindex[i] == 0 &&
@@ -235,6 +269,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
         if (argindex[i] &&
             argindex[i] > modify->fix[ifix]->size_per_particle_cols)
           error->all(FLERR,"Compute reduce fix array is accessed out-of-range");
+	
       } else if (modify->fix[ifix]->per_grid_flag) {
         flavor[i] = GRID;
         if (argindex[i] == 0 &&
@@ -247,6 +282,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
         if (argindex[i] &&
             argindex[i] > modify->fix[ifix]->size_per_grid_cols)
           error->all(FLERR,"Compute reduce fix array is accessed out-of-range");
+	
       } else if (modify->fix[ifix]->per_surf_flag) {
         flavor[i] = SURF;
         if (argindex[i] == 0 &&
@@ -259,6 +295,7 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
         if (argindex[i] &&
             argindex[i] > modify->fix[ifix]->size_per_surf_cols)
           error->all(FLERR,"Compute reduce fix array is accessed out-of-range");
+	
       } else error->all(FLERR,"Compute reduce fix calculates global values");
 
     } else if (which[i] == VARIABLE) {
@@ -267,11 +304,61 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
         error->all(FLERR,"Variable name for compute reduce does not exist");
       if (input->variable->particle_style(ivariable)) flavor[i] = PARTICLE;
       else if (input->variable->grid_style(ivariable)) flavor[i] = GRID;
-      else
-        error->all(FLERR,"Compute reduce variable is not "
-                   "particle-style or grid-style variable");
+      else if (input->variable->surf_style(ivariable)) flavor[i] = SURF;
+      else error->all(FLERR,"Compute reduce variable is not "
+		      "particle-, grid-, surf-style variable");
+
+    } else if (which[i] == PCUSTOM) {
+      flavor[i] = PARTICLE;
+      int icustom = particle->find_custom(ids[i]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for compute reduce does not exist");
+      if (argindex[i] == 0 && particle->esize[icustom] != 0)
+        error->all(FLERR,"Compute reduce custom attribute is not a vector");
+      if (argindex[i] && particle->esize[icustom] == 0)
+        error->all(FLERR,"Compute reduce custom attribute is not an array");
+      if (argindex[i] && argindex[i] > particle->esize[icustom])
+        error->all(FLERR,"Compute reduce custom attribute array is "
+		   "accessed out-of-range");
+
+    } else if (which[i] == GCUSTOM) {
+      flavor[i] = GRID;
+      int icustom = grid->find_custom(ids[i]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for compute reduce does not exist");
+      if (argindex[i] == 0 && grid->esize[icustom] != 0)
+        error->all(FLERR,"Compute reduce custom attribute is not a vector");
+      if (argindex[i] && grid->esize[icustom] == 0)
+        error->all(FLERR,"Compute reduce custom attribute is not an array");
+      if (argindex[i] && argindex[i] > grid->esize[icustom])
+        error->all(FLERR,"Compute reduce custom attribute array is "
+		   "accessed out-of-range");
+
+    } else if (which[i] == SCUSTOM) {
+      flavor[i] = SURF;
+      int icustom = surf->find_custom(ids[i]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for compute reduce does not exist");
+      if (argindex[i] == 0 && surf->esize[icustom] != 0)
+        error->all(FLERR,"Compute reduce custom attribute is not a vector");
+      if (argindex[i] && surf->esize[icustom] == 0)
+        error->all(FLERR,"Compute reduce custom attribute is not an array");
+      if (argindex[i] && argindex[i] > surf->esize[icustom])
+        error->all(FLERR,"Compute reduce custom attribute array is "
+		   "accessed out-of-range");
     }
+
+    // require all values have same flavor
+
+    if (i && flavor[i] != flavor[i-1])
+      error->all(FLERR,"Compute reduce inputs must be all "
+                 "particle, grid, or surf values");
   }
+
+  // require per-surf values for SUMAREA or AVEAREA
+
+  if ((mode == SUMAREA || mode == AVEAREA) && (flavor[0] != SURF))
+    error->all(FLERR,"Compure reduce sum-area/ave-area require surf values");
 
   // this compute produces either a scalar or vector
 
@@ -288,8 +375,11 @@ ComputeReduce::ComputeReduce(SPARTA *spa, int narg, char **arg) :
     owner = new int[size_vector];
   }
 
-  maxparticle = maxgrid = 0;
-  varparticle = vargrid = NULL;
+  maxparticle = maxgrid = maxsurf = 0;
+  varparticle = vargrid = varsurf = NULL;
+
+  smasks = NULL;
+  areasurf = NULL;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -309,15 +399,52 @@ ComputeReduce::~ComputeReduce()
   delete [] indices;
   delete [] owner;
 
+  if (subsetID) delete [] subsetID;
+
   memory->destroy(varparticle);
   memory->destroy(vargrid);
+  memory->destroy(varsurf);
+
+  memory->destroy(smasks);
+  memory->destroy(areasurf);
 }
 
 /* ---------------------------------------------------------------------- */
 
 void ComputeReduce::init()
 {
-  // set indices of all computes,fixes,variables
+  // if subsetID is defined, identify mixture or grid/surf group
+
+  if (subsetID) {
+    if (flavor[0] == PARTICLE) {
+      int imix = particle->find_mixture(subsetID);
+      if (imix < 0)
+        error->all(FLERR,"Compute reduce particle mixture ID does not exist");
+      s2g = particle->mixture[imix]->species2group;
+    } else if (flavor[0] == GRID) {
+      int igroup = grid->find_group(subsetID);
+      if (igroup < 0)
+        error->all(FLERR,"Compute reduce grid group ID does not exist");
+      gridgroupbit = grid->bitmask[igroup];
+    } else if (flavor[0] == SURF) {
+      int igroup = surf->find_group(subsetID);
+      if (igroup < 0)
+        error->all(FLERR,"Compute reduce surf group ID does not exist");
+      surfgroupbit = surf->bitmask[igroup];
+    }
+  }
+
+  // flavor = SURF, pre-compute masks and area of all surfs
+  // if mode != SUMAREA or AVEAREA, area not computed, just set to 1.0
+
+  if (flavor[0] == SURF) {
+    memory->destroy(smasks);
+    memory->create(smasks,surf->nown,"reduce:smasks");
+    surf->extract_masks(smasks);
+    area_total = area_per_surf();
+  }
+
+  // set indices of all computes,fixes,variables,custom attributes
 
   for (int m = 0; m < nvalues; m++) {
     if (which[m] == COMPUTE) {
@@ -338,6 +465,15 @@ void ComputeReduce::init()
         error->all(FLERR,"Variable name for compute reduce does not exist");
       value2index[m] = ivariable;
 
+    } else if (which[m] == PCUSTOM || which[m] == GCUSTOM || which[m] == SCUSTOM) {
+      int icustom;
+      if (which[m] == PCUSTOM) icustom = particle->find_custom(ids[m]);
+      else if (which[m] == GCUSTOM) icustom = grid->find_custom(ids[m]);
+      else if (which[m] == SCUSTOM) icustom = surf->find_custom(ids[m]);
+      if (icustom < 0)
+        error->all(FLERR,"Custom attribute for compute reduce does not exist");
+      value2index[m] = icustom;
+
     } else value2index[m] = -1;
   }
 }
@@ -350,7 +486,7 @@ double ComputeReduce::compute_scalar()
 
   double one = compute_one(0,-1);
 
-  if (mode == SUM || mode == SUMSQ) {
+  if (mode == SUM || mode == SUMSQ || mode == SUMAREA) {
     MPI_Allreduce(&one,&scalar,1,MPI_DOUBLE,MPI_SUM,world);
   } else if (mode == MINN) {
     MPI_Allreduce(&one,&scalar,1,MPI_DOUBLE,MPI_MIN,world);
@@ -358,8 +494,11 @@ double ComputeReduce::compute_scalar()
     MPI_Allreduce(&one,&scalar,1,MPI_DOUBLE,MPI_MAX,world);
   } else if (mode == AVE || mode == AVESQ) {
     MPI_Allreduce(&one,&scalar,1,MPI_DOUBLE,MPI_SUM,world);
-    bigint n = count(0);
+    bigint n = count_included();
     if (n) scalar /= n;
+  } else if (mode == AVEAREA) {
+    MPI_Allreduce(&one,&scalar,1,MPI_DOUBLE,MPI_SUM,world);
+    if (area_total > 0.0) scalar /= area_total;
   }
 
   return scalar;
@@ -377,7 +516,7 @@ void ComputeReduce::compute_vector()
       indices[m] = index;
     }
 
-  if (mode == SUM || mode == SUMSQ) {
+  if (mode == SUM || mode == SUMSQ || mode == SUMAREA) {
     for (int m = 0; m < nvalues; m++)
       MPI_Allreduce(&onevec[m],&vector[m],1,MPI_DOUBLE,MPI_SUM,world);
 
@@ -426,10 +565,16 @@ void ComputeReduce::compute_vector()
     }
 
   } else if (mode == AVE || mode == AVESQ) {
+    bigint n = count_included();
     for (int m = 0; m < nvalues; m++) {
       MPI_Allreduce(&onevec[m],&vector[m],1,MPI_DOUBLE,MPI_SUM,world);
-      bigint n = count(m);
       if (n) vector[m] /= n;
+    }
+
+  } else if (mode == AVEAREA) {
+    for (int m = 0; m < nvalues; m++) {
+      MPI_Allreduce(&onevec[m],&vector[m],1,MPI_DOUBLE,MPI_SUM,world);
+      if (area_total > 0.0) vector[m] /= area_total;
     }
   }
 }
@@ -454,26 +599,28 @@ double ComputeReduce::compute_one(int m, int flag)
   int vidx = value2index[m];
   int aidx = argindex[m];
 
-  double one;
-  if (mode == SUM) one = 0.0;
-  else if (mode == MINN) one = BIG;
+  double one = 0.0;
+  if (mode == MINN) one = BIG;
   else if (mode == MAXX) one = -BIG;
-  else if (mode == AVE) one = 0.0;
 
   if (which[m] == X) {
     Particle::OnePart *particles = particle->particles;
     int n = particle->nlocal;
     if (flag < 0) {
-      for (i = 0; i < n; i++)
+      for (i = 0; i < n; i++) {
+        if (subsetID && s2g[particles[i].ispecies] < 0) continue;
         combine(one,particles[i].x[aidx],i);
+      }
     } else one = particles[flag].x[aidx];
 
   } else if (which[m] == V) {
     Particle::OnePart *particles = particle->particles;
     int n = particle->nlocal;
     if (flag < 0) {
-      for (i = 0; i < n; i++)
+      for (i = 0; i < n; i++) {
+        if (subsetID && s2g[particles[i].ispecies] < 0) continue;
         combine(one,particles[i].v[aidx],i);
+      }
     } else one = particles[flag].v[aidx];
 
   } else if (which[m] == KE) {
@@ -487,6 +634,7 @@ double ComputeReduce::compute_one(int m, int flag)
 
     if (flag < 0) {
       for (i = 0; i < n; i++) {
+        if (subsetID && s2g[particles[i].ispecies] < 0) continue;
         p = &particles[i];
         v = p->v;
         ke = mvv2e * 0.5 * species[p->ispecies].mass *
@@ -504,20 +652,25 @@ double ComputeReduce::compute_one(int m, int flag)
     Particle::OnePart *particles = particle->particles;
     int n = particle->nlocal;
     if (flag < 0) {
-      for (i = 0; i < n; i++)
+      for (i = 0; i < n; i++) {
+        if (subsetID && s2g[particles[i].ispecies] < 0) continue;
         combine(one,particles[i].erot,i);
+      }
     } else one = particles[flag].erot;
 
   } else if (which[m] == EVIB) {
     Particle::OnePart *particles = particle->particles;
     int n = particle->nlocal;
     if (flag < 0) {
-      for (i = 0; i < n; i++)
+      for (i = 0; i < n; i++) {
+        if (subsetID && s2g[particles[i].ispecies] < 0) continue;
         combine(one,particles[i].evib,i);
+      }
     } else one = particles[flag].evib;
 
   // invoke compute if not previously invoked
-  // for per-grid compute, invoke post_process() method if necessary
+  // for per-grid compute, invoke post_process grid() or isurf_grid() method as needed
+  // for per-surf compute, invoke post_process_surf() method as needed
 
   } else if (which[m] == COMPUTE) {
     Compute *c = modify->compute[vidx];
@@ -530,18 +683,24 @@ double ComputeReduce::compute_one(int m, int flag)
 
       if (aidx == 0) {
         double *cvec = c->vector_particle;
+        Particle::OnePart *particles = particle->particles;
         int n = particle->nlocal;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
             combine(one,cvec[i],i);
+          }
         } else one = cvec[flag];
       } else {
         double **carray = c->array_particle;
+        Particle::OnePart *particles = particle->particles;
         int n = particle->nlocal;
         int aidxm1 = aidx - 1;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
             combine(one,carray[i][aidxm1],i);
+          }
         } else one = carray[flag][aidxm1];
       }
 
@@ -558,18 +717,53 @@ double ComputeReduce::compute_one(int m, int flag)
 
       if (aidx == 0 || c->post_process_grid_flag) {
         double *cvec = c->vector_grid;
+        Grid::ChildInfo *cinfo = grid->cinfo;
         int n = grid->nlocal;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
             combine(one,cvec[i],i);
+          }
         } else one = cvec[flag];
       } else {
         double **carray = c->array_grid;
+        Grid::ChildInfo *cinfo = grid->cinfo;
         int n = grid->nlocal;
         int aidxm1 = aidx - 1;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
             combine(one,carray[i][aidxm1],i);
+          }
+        } else one = carray[flag][aidxm1];
+      }
+
+    } else if (flavor[m] == SURF) {
+      if (!(c->invoked_flag & INVOKED_PER_SURF)) {
+        c->compute_per_surf();
+        c->invoked_flag |= INVOKED_PER_SURF;
+      }
+
+      c->post_process_surf();
+
+      if (aidx == 0) {
+        double *cvec = c->vector_surf;
+        int n = surf->nown;
+        if (flag < 0) {
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+            combine(one,cvec[i],i);
+          }
+        } else one = cvec[flag];
+      } else {
+        double **carray = c->array_surf;
+        int n = surf->nown;
+        int aidxm1 = aidx - 1;
+        if (flag < 0) {
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+            combine(one,carray[i][aidxm1],i);
+          }
         } else one = carray[flag][aidxm1];
       }
     }
@@ -585,18 +779,24 @@ double ComputeReduce::compute_one(int m, int flag)
                    "computed at compatible time");
       if (aidx == 0) {
         double *fvec = fix->vector_particle;
+        Particle::OnePart *particles = particle->particles;
         int n = particle->nlocal;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
             combine(one,fvec[i],i);
+          }
         } else one = fvec[flag];
       } else {
         double **farray = fix->array_particle;
+        Particle::OnePart *particles = particle->particles;
         int n = particle->nlocal;
         int aidxm1 = aidx - 1;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
             combine(one,farray[i][aidxm1],i);
+          }
         } else one = farray[flag][aidxm1];
       }
 
@@ -606,18 +806,24 @@ double ComputeReduce::compute_one(int m, int flag)
                    "computed at compatible time");
       if (aidx == 0) {
         double *fvec = fix->vector_grid;
+        Grid::ChildInfo *cinfo = grid->cinfo;
         int n = grid->nlocal;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
             combine(one,fvec[i],i);
+          }
         } else one = fvec[flag];
       } else {
         double **farray = fix->array_grid;
+        Grid::ChildInfo *cinfo = grid->cinfo;
         int n = grid->nlocal;
         int aidxm1 = aidx - 1;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
             combine(one,farray[i][aidxm1],i);
+          }
         } else one = farray[flag][aidxm1];
       }
 
@@ -627,26 +833,31 @@ double ComputeReduce::compute_one(int m, int flag)
                    "computed at compatible time");
       if (aidx == 0) {
         double *fvec = fix->vector_surf;
-        int n = surf->nown;
+	int n = surf->nown;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
-            combine(one,fvec[i],i);
+          for (i = 0; i < n; i++) {
+            if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+            combine(one,areasurf[i]*fvec[i],i);
+	  }
         } else one = fvec[flag];
       } else {
         double **farray = fix->array_surf;
         int n = surf->nown;
         int aidxm1 = aidx - 1;
         if (flag < 0) {
-          for (i = 0; i < n; i++)
-            combine(one,farray[i][aidxm1],i);
+          for (i = 0; i < n; i++) {
+	    if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+	    combine(one,areasurf[i]*farray[i][aidxm1],i);
+	  }
         } else one = farray[flag][aidxm1];
       }
     }
 
-  // evaluate particle-style or grid-style variable
+  // evaluate particle-style or grid-style or surf->style variable
 
   } else if (which[m] == VARIABLE) {
     if (flavor[m] == PARTICLE) {
+      Particle::OnePart *particles = particle->particles;
       int n = particle->nlocal;
       if (n > maxparticle) {
         maxparticle = particle->maxlocal;
@@ -656,11 +867,14 @@ double ComputeReduce::compute_one(int m, int flag)
 
       input->variable->compute_particle(vidx,varparticle,1,0);
       if (flag < 0) {
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++) {
+          if (subsetID && s2g[particles[i].ispecies] < 0) continue;
           combine(one,varparticle[i],i);
+        }
       } else one = varparticle[flag];
 
     } else if (flavor[m] == GRID) {
+      Grid::ChildInfo *cinfo = grid->cinfo;
       int n = grid->nlocal;
       if (n > maxgrid) {
         maxgrid = grid->maxlocal;
@@ -670,9 +884,181 @@ double ComputeReduce::compute_one(int m, int flag)
 
       input->variable->compute_grid(vidx,vargrid,1,0);
       if (flag < 0) {
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++) {
+          if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
           combine(one,vargrid[i],i);
+        }
       } else one = vargrid[flag];
+
+    } else if (flavor[m] == SURF) {
+      int n = surf->nown;
+      if (n > maxsurf) {
+        maxsurf = surf->nown;
+        memory->destroy(varsurf);
+        memory->create(varsurf,maxsurf,"reduce:varsurf");
+      }
+
+      input->variable->compute_surf(vidx,varsurf,1,0);
+      if (flag < 0) {
+        for (i = 0; i < n; i++) {
+          if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+          combine(one,varsurf[i],i);
+        }
+      } else one = varsurf[flag];
+    }
+
+  // access per-particle custom attribute
+
+  } else if (which[m] == PCUSTOM) {
+    if (aidx == 0) {
+      Particle::OnePart *particles = particle->particles;
+      int n = particle->nlocal;
+      if (flag < 0) {
+	if (particle->etype[vidx] == INT) {
+	  int *cvec = particle->eivec[particle->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
+	    combine(one,cvec[i],i);
+	  }
+	} else if (particle->etype[vidx] == DOUBLE) {
+	  double *cvec = particle->edvec[particle->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
+	    combine(one,cvec[i],i);
+	  }
+	}
+      } else {
+	if (particle->etype[vidx] == INT)
+	  one = particle->eivec[particle->ewhich[vidx]][flag];
+	else
+	  one = particle->edvec[particle->ewhich[vidx]][flag];
+      }
+    } else {
+      Particle::OnePart *particles = particle->particles;
+      int n = particle->nlocal;
+      int aidxm1 = aidx - 1;
+      if (flag < 0) {
+	if (particle->etype[vidx] == INT) {
+	  int **carray = particle->eiarray[particle->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
+	    combine(one,carray[i][aidxm1],i);
+	  }
+	} else if (particle->etype[vidx] == DOUBLE) {
+	  double **carray = particle->edarray[particle->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && s2g[particles[i].ispecies] < 0) continue;
+	    combine(one,carray[i][aidxm1],i);
+	  }
+	}
+      } else {
+	if (particle->etype[vidx] == INT)
+	  one = particle->eiarray[particle->ewhich[vidx]][flag][aidxm1];
+	else
+	  one = particle->edarray[particle->ewhich[vidx]][flag][aidxm1];
+      }
+    }
+
+  // access per-grid custom attribute
+
+  } else if (which[m] == GCUSTOM) {
+    if (aidx == 0) {
+      Grid::ChildInfo *cinfo = grid->cinfo;
+      int n = grid->nlocal;
+      if (flag < 0) {
+	if (grid->etype[vidx] == INT) {
+	  int *cvec = grid->eivec[grid->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
+	    combine(one,cvec[i],i);
+	  }
+	} else if (grid->etype[vidx] == DOUBLE) {
+	  double *cvec = grid->edvec[grid->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
+	    combine(one,cvec[i],i);
+	  }
+	}
+      } else {
+	if (grid->etype[vidx] == INT)
+	  one = grid->eivec[grid->ewhich[vidx]][flag];
+	else
+	  one = grid->edvec[grid->ewhich[vidx]][flag];
+      }
+    } else {
+      Grid::ChildInfo *cinfo = grid->cinfo;
+      int n = grid->nlocal;
+      int aidxm1 = aidx - 1;
+      if (flag < 0) {
+	if (grid->etype[vidx] == INT) {
+	  int **carray = grid->eiarray[grid->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
+	    combine(one,carray[i][aidxm1],i);
+	  }
+	} else if (grid->etype[vidx] == DOUBLE) {
+	  double **carray = grid->edarray[grid->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+            if (subsetID && !(cinfo[i].mask & gridgroupbit)) continue;
+	    combine(one,carray[i][aidxm1],i);
+	  }
+	}
+      } else {
+	if (grid->etype[vidx] == INT)
+	  one = grid->eiarray[grid->ewhich[vidx]][flag][aidxm1];
+	else
+	  one = grid->edarray[grid->ewhich[vidx]][flag][aidxm1];
+      }
+    }
+
+  // access per-surf custom attribute
+
+  } else if (which[m] == SCUSTOM) {
+    if (aidx == 0) {
+      int n = surf->nown;
+      if (flag < 0) {
+	if (surf->etype[vidx] == INT) {
+	  int *cvec = surf->eivec[surf->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+	    if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+	    combine(one,areasurf[i]*cvec[i],i);
+	  }
+	} else if (surf->etype[vidx] == DOUBLE) {
+	  double *cvec = surf->edvec[surf->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+	    if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+	    combine(one,areasurf[i]*cvec[i],i);
+	  }
+	}
+      } else {
+	if (surf->etype[vidx] == INT)
+	  one = surf->eivec[surf->ewhich[vidx]][flag];
+	else
+	  one = surf->edvec[surf->ewhich[vidx]][flag];
+      }
+    } else {
+      int n = surf->nown;
+      int aidxm1 = aidx - 1;
+      if (flag < 0) {
+	if (surf->etype[vidx] == INT) {
+	  int **carray = surf->eiarray[surf->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+	    if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+	    combine(one,areasurf[i]*carray[i][aidxm1],i);
+	  }
+	} else if (surf->etype[vidx] == DOUBLE) {
+	  double **carray = surf->edarray[surf->ewhich[vidx]];
+	  for (i = 0; i < n; i++) {
+	    if (subsetID && !(smasks[i] & surfgroupbit)) continue;
+	    combine(one,areasurf[i]*carray[i][aidxm1],i);
+	  }
+	}
+      } else {
+	if (surf->etype[vidx] == INT)
+	  one = surf->eiarray[surf->ewhich[vidx]][flag][aidxm1];
+	else
+	  one = surf->edarray[surf->ewhich[vidx]][flag][aidxm1];
+      }
     }
   }
 
@@ -681,29 +1067,115 @@ double ComputeReduce::compute_one(int m, int flag)
 
 /* ---------------------------------------------------------------------- */
 
-bigint ComputeReduce::count(int m)
+bigint ComputeReduce::count_included()
 {
   bigint ncount,ncountall;
 
-  if (which[m] == X || which[m] == V) {
-    ncount = particle->nlocal;
-  } else if (which[m] == KE || which[m] == EROT || which[m] == EVIB) {
-    ncount = particle->nlocal;
-  } else if (which[m] == COMPUTE) {
-    if (flavor[m] == PARTICLE) ncount = particle->nlocal;
-    else if (flavor[m] == GRID) ncount = grid->nlocal;
-  } else if (which[m] == FIX) {
-    if (flavor[m] == PARTICLE) ncount = particle->nlocal;
-    else if (flavor[m] == GRID) ncount = grid->nlocal;
-    else if (flavor[m] == SURF) ncount = surf->nown;
-  } else if (which[m] == VARIABLE) {
-    if (flavor[m] == PARTICLE) ncount = particle->nlocal;
-    else if (flavor[m] == GRID) ncount = grid->nlocal;
+  if (flavor[0] == PARTICLE) {
+    if (!subsetID) ncount = particle->nlocal;
+    else {
+      Particle::OnePart *particles = particle->particles;
+      int n = particle->nlocal;
+      ncount = 0;
+      for (int i = 0; i < n; i++)
+        if (s2g[particles[i].ispecies] >= 0) ncount++;
+    }
+
+  } else if (flavor[0] == GRID) {
+    if (!subsetID) ncount = grid->nlocal;
+    else {
+      Grid::ChildInfo *cinfo = grid->cinfo;
+      int n = grid->nlocal;
+      ncount = 0;
+      for (int i = 0; i < n; i++)
+        if (cinfo[i].mask & gridgroupbit) ncount++;
+    }
+
+  } else if (flavor[0] == SURF) {
+    if (!subsetID) ncount = surf->nown;
+    else {
+      int dimension = domain->dimension;
+      Surf::Line *lines = surf->lines;
+      Surf::Line *mylines = surf->mylines;
+      Surf::Tri *tris = surf->tris;
+      Surf::Tri *mytris = surf->mytris;
+      int distributed = surf->distributed;
+      int n = surf->nown;
+
+      ncount = 0;
+      for (int i = 0; i < n; i++)
+        if (dimension == 2) {
+          if (!distributed) {
+            if (lines[me+i*nprocs].mask & surfgroupbit) ncount++;
+          } else {
+            if (mylines[i].mask & surfgroupbit) ncount++;
+          }
+        } else {
+          if (!distributed) {
+            if (tris[me+i*nprocs].mask & surfgroupbit) ncount++;
+          } else {
+            if (mytris[i].mask & surfgroupbit) ncount++;
+          }
+        }
+    }
   }
 
   MPI_Allreduce(&ncount,&ncountall,1,MPI_SPARTA_BIGINT,MPI_SUM,world);
 
   return ncountall;
+}
+
+/* ---------------------------------------------------------------------- */
+
+double ComputeReduce::area_per_surf()
+{
+  double area_mine,area_all,tmp;
+
+  int dimension = domain->dimension;
+  Surf::Line *lines = surf->lines;
+  Surf::Line *mylines = surf->mylines;
+  Surf::Tri *tris = surf->tris;
+  Surf::Tri *mytris = surf->mytris;
+  int distributed = surf->distributed;
+  int n = surf->nown;
+
+  memory->destroy(areasurf);
+  memory->create(areasurf,n,"reduce:areasurf");
+
+  area_mine = 0.0;
+  for (int i = 0; i < n; i++) {
+    if (dimension == 2) {
+      if (!distributed) {
+        if (subsetID && !(lines[me+i*nprocs].mask & surfgroupbit)) continue;
+        if (mode == SUMAREA || mode == AVEAREA)
+          areasurf[i] = surf->line_size(&lines[me+i*nprocs]);
+        else areasurf[i] = 1.0;
+      } else {
+        if (subsetID && !(mylines[i].mask & surfgroupbit)) continue;
+        if (mode == SUMAREA || mode == AVEAREA)
+          areasurf[i] = surf->line_size(&mylines[i]);
+        else areasurf[i] = 1.0;
+      }
+    } else {
+      if (!distributed) {
+        if (subsetID && !(tris[me+i*nprocs].mask & surfgroupbit)) continue;
+        if (mode == SUMAREA || mode == AVEAREA)
+          areasurf[i] = surf->tri_size(&tris[me+i*nprocs],tmp);
+        else areasurf[i] = 1.0;
+      } else {
+        if (subsetID && !(mytris[i].mask & surfgroupbit)) continue;
+        if (mode == SUMAREA || mode == AVEAREA)
+          areasurf[i] = surf->tri_size(&mytris[i],tmp);
+        else areasurf[i] = 1.0;
+      }
+    }
+
+
+    area_mine += areasurf[i];
+  }
+
+  MPI_Allreduce(&area_mine,&area_all,1,MPI_DOUBLE,MPI_SUM,world);
+  return area_all;
 }
 
 /* ----------------------------------------------------------------------
@@ -725,7 +1197,7 @@ void ComputeReduce::combine(double &one, double two, int i)
       one = two;
       index = i;
     }
-  }
+  } else if (mode == SUMAREA || mode == AVEAREA) one += two;
 }
 
 /* ----------------------------------------------------------------------

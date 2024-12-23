@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -33,23 +33,35 @@ class SurfCollideTransparentKokkos : public SurfCollideTransparent {
   SurfCollideTransparentKokkos(class SPARTA *);
   ~SurfCollideTransparentKokkos() {}
 
+  void pre_collide();
+  void post_collide();
+
+ private:
+
   DAT::tdual_int_scalar k_nsingle;
   DAT::t_int_scalar d_nsingle;
   HAT::t_int_scalar h_nsingle;
 
+ public:
+
   /* ----------------------------------------------------------------------
      particle collision with surface with optional chemistry
      ip = particle with current x = collision pt, current v = incident v
-     norm = surface normal unit vector
-     simply return ip = NULL to delete particle
-     return reaction = 0 = no reaction took place
+
+     ip velocity is unchanged
+     return jp = NULL for no new particle
   ------------------------------------------------------------------------- */
 
+  template<int REACT, int ATOMIC_REDUCTION>
   KOKKOS_INLINE_FUNCTION
-  Particle::OnePart*
-  collide_kokkos(Particle::OnePart *&ip, const double *, double &, int, int&) const
+  Particle::OnePart* collide_kokkos(Particle::OnePart *, double &,
+                                    int, const double *, int, int &,
+                                    const DAT::t_int_scalar &, const DAT::t_int_scalar &) const
   {
-    Kokkos::atomic_fetch_add(&d_nsingle(),1);
+    if (ATOMIC_REDUCTION == 0)
+      d_nsingle()++;
+    else
+      Kokkos::atomic_increment(&d_nsingle());
 
     return NULL;
   }

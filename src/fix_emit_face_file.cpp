@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -27,7 +27,7 @@
 #include "comm.h"
 #include "modify.h"
 #include "geometry.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "memory.h"
 #include "error.h"
@@ -45,7 +45,7 @@ enum{NOSUBSONIC,PTBOTH,PONLY};
 
 #define DELTATASK 256
 #define TEMPLIMIT 1.0e5
-#define MAXLINE 1024
+#define MAXLINE 16384
 
 /* ---------------------------------------------------------------------- */
 
@@ -265,7 +265,7 @@ void FixEmitFaceFile::create_task(int icell)
   // works for 2d quads and 3d hexes
 
   int corners[6][4] = {{0,2,4,6}, {1,3,5,7}, {0,1,4,5}, {2,3,6,7},
-		       {0,1,2,3}, {4,5,6,7}};
+                       {0,1,2,3}, {4,5,6,7}};
   int nface_pts = 4;
   if (domain->dimension == 2) nface_pts = 2;
 
@@ -377,7 +377,7 @@ void FixEmitFaceFile::perform_task()
   //   shift Maxwellian distribution by stream velocity component
   //   see Bird 1994, p 259, eq 12.5
 
-  int nfix_add_particle = modify->n_add_particle;
+  int nfix_update_custom = modify->n_update_custom;
 
   for (int i = 0; i < ntask; i++) {
     pcell = tasks[i].pcell;
@@ -395,28 +395,28 @@ void FixEmitFaceFile::perform_task()
     if (perspecies) {
       for (isp = 0; isp < nspecies; isp++) {
         ispecies = species[isp];
-	ntarget = tasks[i].ntargetsp[isp]+random->uniform();
-	ninsert = static_cast<int> (ntarget);
+        ntarget = tasks[i].ntargetsp[isp]+random->uniform();
+        ninsert = static_cast<int> (ntarget);
         scosine = indot / vscale[isp];
 
         nactual = 0;
-	for (int m = 0; m < ninsert; m++) {
-	  x[0] = lo[0] + random->uniform() * (hi[0]-lo[0]);
-	  x[1] = lo[1] + random->uniform() * (hi[1]-lo[1]);
-	  if (dimension == 3) x[2] = lo[2] + random->uniform() * (hi[2]-lo[2]);
+        for (int m = 0; m < ninsert; m++) {
+          x[0] = lo[0] + random->uniform() * (hi[0]-lo[0]);
+          x[1] = lo[1] + random->uniform() * (hi[1]-lo[1]);
+          if (dimension == 3) x[2] = lo[2] + random->uniform() * (hi[2]-lo[2]);
           else x[2] = 0.0;
 
           if (region && !region->match(x)) continue;
 
-	  do {
-	    do beta_un = (6.0*random->uniform() - 3.0);
-	    while (beta_un + scosine < 0.0);
-	    normalized_distbn_fn = 2.0 * (beta_un + scosine) /
-	      (scosine + sqrt(scosine*scosine + 2.0)) *
-	      exp(0.5 + (0.5*scosine)*(scosine-sqrt(scosine*scosine + 2.0)) -
-		  beta_un*beta_un);
-	  } while (normalized_distbn_fn < random->uniform());
-	
+          do {
+            do beta_un = (6.0*random->uniform() - 3.0);
+            while (beta_un + scosine < 0.0);
+            normalized_distbn_fn = 2.0 * (beta_un + scosine) /
+              (scosine + sqrt(scosine*scosine + 2.0)) *
+              exp(0.5 + (0.5*scosine)*(scosine-sqrt(scosine*scosine + 2.0)) -
+                  beta_un*beta_un);
+          } while (normalized_distbn_fn < random->uniform());
+
           v[ndim] = beta_un*vscale[isp]*normal[ndim] + vstream[ndim];
 
           theta = MY_2PI * random->uniform();
@@ -427,7 +427,7 @@ void FixEmitFaceFile::perform_task()
           evib = particle->evib(ispecies,temp_vib,random);
           id = MAXSMALLINT*random->uniform();
 
-	  particle->add_particle(id,ispecies,pcell,x,v,erot,evib);
+          particle->add_particle(id,ispecies,pcell,x,v,erot,evib);
           nactual++;
 
           p = &particle->particles[particle->nlocal-1];
@@ -435,12 +435,12 @@ void FixEmitFaceFile::perform_task()
           p->dtremain = dt * random->uniform();
           p->dt_weight = 1;
 
-          if (nfix_add_particle)
-            modify->add_particle(particle->nlocal-1,temp_thermal,
+          if (nfix_update_custom)
+            modify->update_custom(particle->nlocal-1,temp_thermal,
                                  temp_rot,temp_vib,vstream);
-	}
+        }
 
-	nsingle += nactual;
+        nsingle += nactual;
       }
 
     } else {
@@ -450,28 +450,28 @@ void FixEmitFaceFile::perform_task()
 
       nactual = 0;
       for (int m = 0; m < ninsert; m++) {
-	rn = random->uniform();
-	isp = 0;
-	while (cummulative[isp] < rn) isp++;
+        rn = random->uniform();
+        isp = 0;
+        while (cummulative[isp] < rn) isp++;
         ispecies = species[isp];
         scosine = indot / vscale[isp];
 
-	x[0] = lo[0] + random->uniform() * (hi[0]-lo[0]);
-	x[1] = lo[1] + random->uniform() * (hi[1]-lo[1]);
-	if (dimension == 3) x[2] = lo[2] + random->uniform() * (hi[2]-lo[2]);
+        x[0] = lo[0] + random->uniform() * (hi[0]-lo[0]);
+        x[1] = lo[1] + random->uniform() * (hi[1]-lo[1]);
+        if (dimension == 3) x[2] = lo[2] + random->uniform() * (hi[2]-lo[2]);
         else x[2] = 0.0;
 
         if (region && !region->match(x)) continue;
 
-	do {
-	  do beta_un = (6.0*random->uniform() - 3.0);
-	  while (beta_un + scosine < 0.0);
-	  normalized_distbn_fn = 2.0 * (beta_un + scosine) /
-	    (scosine + sqrt(scosine*scosine + 2.0)) *
-	    exp(0.5 + (0.5*scosine)*(scosine-sqrt(scosine*scosine + 2.0)) -
-		beta_un*beta_un);
-	} while (normalized_distbn_fn < random->uniform());
-	
+        do {
+          do beta_un = (6.0*random->uniform() - 3.0);
+          while (beta_un + scosine < 0.0);
+          normalized_distbn_fn = 2.0 * (beta_un + scosine) /
+            (scosine + sqrt(scosine*scosine + 2.0)) *
+            exp(0.5 + (0.5*scosine)*(scosine-sqrt(scosine*scosine + 2.0)) -
+                beta_un*beta_un);
+        } while (normalized_distbn_fn < random->uniform());
+
         v[ndim] = beta_un*vscale[isp]*normal[ndim] + vstream[ndim];
 
         theta = MY_PI * random->uniform();
@@ -482,7 +482,7 @@ void FixEmitFaceFile::perform_task()
         evib = particle->evib(ispecies,temp_vib,random);
         id = MAXSMALLINT*random->uniform();
 
-	particle->add_particle(id,ispecies,pcell,x,v,erot,evib);
+        particle->add_particle(id,ispecies,pcell,x,v,erot,evib);
         nactual++;
 
         p = &particle->particles[particle->nlocal-1];
@@ -490,8 +490,8 @@ void FixEmitFaceFile::perform_task()
         p->dtremain = dt * random->uniform();
         p->dt_weight = 1;
 
-        if (nfix_add_particle)
-          modify->add_particle(particle->nlocal-1,temp_thermal,
+        if (nfix_update_custom)
+          modify->update_custom(particle->nlocal-1,temp_thermal,
                                temp_rot,temp_vib,vstream);
       }
 
@@ -509,7 +509,7 @@ void FixEmitFaceFile::read_file(char *file, char *section)
 {
   int i,m,n,ii,jj,offset;
   char line[MAXLINE];
-  char *word;
+  char *word,*tmp;
 
   int dimension = domain->dimension;
 
@@ -532,33 +532,33 @@ void FixEmitFaceFile::read_file(char *file, char *section)
     word = strtok(line," \t\n\r");
     if (strcmp(word,section) == 0) break;           // matching keyword
 
-    fgets(line,MAXLINE,fp);                         // no match, read NIJ or NI
-    word = strtok(line," \t\n\r");                  // skip 2d or 3d section
+    tmp = fgets(line,MAXLINE,fp);               // no match, read NIJ or NI
+    word = strtok(line," \t\n\r");              // skip 2d or 3d section
     int nskip;
     if (strcmp(word,"NIJ") == 0) {
       word = strtok(NULL," \t\n\r");
       nskip = atoi(word);
       word = strtok(NULL," \t\n\r");
       nskip *= atoi(word);
-      fgets(line,MAXLINE,fp);                         // NV line
-      fgets(line,MAXLINE,fp);                         // values line
-      fgets(line,MAXLINE,fp);                         // imesh line
-      fgets(line,MAXLINE,fp);                         // jmesh line
+      tmp = fgets(line,MAXLINE,fp);                   // NV line
+      tmp = fgets(line,MAXLINE,fp);                   // values line
+      tmp = fgets(line,MAXLINE,fp);                   // imesh line
+      tmp = fgets(line,MAXLINE,fp);                   // jmesh line
     } else if (strcmp(word,"NI") == 0) {
       word = strtok(NULL," \t\n\r");
       nskip = atoi(word);
-      fgets(line,MAXLINE,fp);                         // NV line
-      fgets(line,MAXLINE,fp);                         // values line
-      fgets(line,MAXLINE,fp);                         // imesh line
+      tmp = fgets(line,MAXLINE,fp);                   // NV line
+      tmp = fgets(line,MAXLINE,fp);                   // values line
+      tmp = fgets(line,MAXLINE,fp);                   // imesh line
     } else error->one(FLERR,"Misformatted section in inflow file");
 
-    fgets(line,MAXLINE,fp);                               // blank line
-    for (i = 0; i < nskip; i++) fgets(line,MAXLINE,fp);   // value lines
+    tmp = fgets(line,MAXLINE,fp);                     // blank line
+    for (i = 0; i < nskip; i++) tmp = fgets(line,MAXLINE,fp);   // value lines
   }
 
   // read and store the matching section
 
-  fgets(line,MAXLINE,fp);                             // read NIJ or NI
+  tmp = fgets(line,MAXLINE,fp);                       // read NIJ or NI
   word = strtok(line," \t\n\r");
   if (strcmp(word,"NIJ") == 0) {
     if (dimension != 3)
@@ -580,7 +580,7 @@ void FixEmitFaceFile::read_file(char *file, char *section)
 
   // read NV line
 
-  fgets(line,MAXLINE,fp);
+  tmp = fgets(line,MAXLINE,fp);
   word = strtok(line," \t\n\r");
   if (strcmp(word,"NV") != 0)
     error->one(FLERR,"Misformatted section in inflow file");
@@ -592,7 +592,7 @@ void FixEmitFaceFile::read_file(char *file, char *section)
   // read VALUES line and convert names to which vector
 
   mesh.which = new int[mesh.nvalues];
-  fgets(line,MAXLINE,fp);
+  tmp = fgets(line,MAXLINE,fp);
   word = strtok(line," \t\n\r");
   for (i = 0; i < mesh.nvalues; i++) {
     word = strtok(NULL," \t\n\r");
@@ -616,7 +616,7 @@ void FixEmitFaceFile::read_file(char *file, char *section)
   mesh.imesh = new double[mesh.ni];
   mesh.jmesh = new double[mesh.nj];
 
-  fgets(line,MAXLINE,fp);
+  tmp = fgets(line,MAXLINE,fp);
   word = strtok(line," \t\n\r");
   if (strcmp(word,"IMESH") != 0)
     error->one(FLERR,"Misformatted section in inflow file");
@@ -630,7 +630,7 @@ void FixEmitFaceFile::read_file(char *file, char *section)
   mesh.hi[0] = mesh.imesh[mesh.ni-1];
 
   if (dimension == 3) {
-    fgets(line,MAXLINE,fp);
+    tmp = fgets(line,MAXLINE,fp);
     word = strtok(line," \t\n\r");
     if (strcmp(word,"JMESH") != 0)
       error->one(FLERR,"Misformatted section in inflow file");
@@ -647,13 +647,13 @@ void FixEmitFaceFile::read_file(char *file, char *section)
   // N = Ni by Nj values lines, store values in mesh
   // II,JJ stored with II varying fastest in 2d
 
-  fgets(line,MAXLINE,fp);    // blank line
+  tmp = fgets(line,MAXLINE,fp);    // blank line
 
   n = mesh.ni * mesh.nj;
   memory->create(mesh.values,n,mesh.nvalues,"inflow/file:values");
 
   for (i = 0; i < n; i++) {
-    fgets(line,MAXLINE,fp);
+    tmp = fgets(line,MAXLINE,fp);
     word = strtok(line," \t\n\r");
     ii = atoi(word);
     if (dimension == 3) {
@@ -1259,7 +1259,7 @@ void FixEmitFaceFile::grow_task()
   int oldmax = ntaskmax;
   ntaskmax += DELTATASK;
   tasks = (Task *) memory->srealloc(tasks,ntaskmax*sizeof(Task),
-				    "emit/face/file:tasks");
+                                    "emit/face/file:tasks");
 
   // set all new task bytes to 0 so valgrind won't complain
   // if bytes between fields are uninitialized

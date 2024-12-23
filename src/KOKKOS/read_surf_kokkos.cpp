@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -44,7 +44,7 @@ enum{UNKNOWN,OUTSIDE,INSIDE,OVERLAP};           // several files
 #define EPSILON_NORM 1.0e-12
 #define EPSILON_GRID 1.0e-3
 #define BIG 1.0e20
-#define DELTA 128           // must be 2 or greater
+#define DELTA 1024
 
 /* ---------------------------------------------------------------------- */
 

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -50,7 +50,6 @@ class WriteRestart : protected Pointers {
   void particle_params();
   void grid_params();
   void surf_params();
-  void file_layout(int);
 
   void magic_string();
   void endian();
@@ -62,7 +61,7 @@ class WriteRestart : protected Pointers {
   void write_string(int, char *);
   void write_int_vec(int, int, int *);
   void write_double_vec(int, int, double *);
-  void write_char_vec(int, bigint, char *);
+  void write_char_vec(int, int, char *);
   void write_char_vec(int, bigint, int, char *);
   void write_char_vec(int, char *);
 };
@@ -83,6 +82,10 @@ E: Illegal ... command
 Self-explanatory.  Check the input script syntax and compare to the
 documentation for the command.  You can use -echo screen as a
 command-line option when running SPARTA to see the offending line.
+
+E: Cannot (yet) use global mem/limit without % in restart file name
+
+This feature is not yet implemented.
 
 E: Cannot use write_restart fileper without % in restart file name
 

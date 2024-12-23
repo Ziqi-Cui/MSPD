@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -61,6 +61,10 @@ FixAdapt::FixAdapt(SPARTA *sparta, int narg, char **arg) :
   action1 = adapt->action1;
   action2 = adapt->action2;
   file = adapt->file;
+
+  coarsen_flag = 0;
+  if (action1 == COARSEN || action2 == COARSEN)
+    coarsen_flag = 1;
 
   if (file && strchr(file,'*') == NULL)
     error->all(FLERR,"Fix adapt filename must contain '*' character");
@@ -169,6 +173,15 @@ void FixAdapt::end_of_step()
   // notify all classes that store per-grid data that grid may have changed
 
   grid->notify_changed();
+
+  // if explicit distributed surfs
+  // set redistribute timestep and clear custom status flags
+
+  if (surf->distributed && !surf->implicit) {
+    surf->localghost_changed_step = update->ntimestep;
+    for (int i = 0; i < surf->ncustom; i++)
+      surf->estatus[i] = 0;
+  }
 
   // write out new grid file
 

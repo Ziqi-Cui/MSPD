@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -51,6 +51,13 @@ int Grid::pack_one(int icell, char *buf,
   ptr += sizeof(ChildCell);
   ptr = ROUNDUP(ptr);
 
+  // pack custom grid data
+
+  if (ncustom) {
+    ptr += pack_custom(icell,ptr,memflag);
+    ptr = ROUNDUP(ptr);
+  }
+
   // no surfs or any other info
   // ditto for sending empty ghost
 
@@ -72,20 +79,20 @@ int Grid::pack_one(int icell, char *buf,
       int sizesurf = sizeof(Surf::Line);
       surfint *csurfs = cells[icell].csurfs;
       for (int m = 0; m < nsurf; m++) {
-	int isurf = csurfs[m];
-	if (memflag) memcpy(ptr,&lines[isurf],sizesurf);
-	ptr += sizesurf;
-	ptr = ROUNDUP(ptr);
+        int isurf = csurfs[m];
+        if (memflag) memcpy(ptr,&lines[isurf],sizesurf);
+        ptr += sizesurf;
+        ptr = ROUNDUP(ptr);
       }
     } else {
       Surf::Tri *tris = surf->tris;
       int sizesurf = sizeof(Surf::Tri);
       surfint *csurfs = cells[icell].csurfs;
       for (int m = 0; m < nsurf; m++) {
-	int isurf = csurfs[m];
-	if (memflag) memcpy(ptr,&tris[isurf],sizesurf);
-	ptr += sizesurf;
-	ptr = ROUNDUP(ptr);
+        int isurf = csurfs[m];
+        if (memflag) memcpy(ptr,&tris[isurf],sizesurf);
+        ptr += sizesurf;
+        ptr = ROUNDUP(ptr);
       }
     }
   }
@@ -204,6 +211,13 @@ int Grid::unpack_one(char *buf,
   if (ownflag) {
     cells[icell].proc = me;
     cells[icell].ilocal = icell;
+  }
+
+  // unpack custom grid data
+
+  if (ncustom) {
+    ptr += unpack_custom(ptr,icell);
+    ptr = ROUNDUP(ptr);
   }
 
   // no surfs or any other info
@@ -438,18 +452,18 @@ int Grid::pack_one_adapt(char *inbuf, char *buf, int memflag)
       int sizesurf = sizeof(Surf::Line);
       surfint *csurfs = cells[icell].csurfs;
       for (int m = 0; m < nsurf; m++) {
-	isurf = csurfs[m];
-	if (memflag) memcpy(ptr,&lines[isurf],sizesurf);
-	ptr += sizesurf;
+        isurf = csurfs[m];
+        if (memflag) memcpy(ptr,&lines[isurf],sizesurf);
+        ptr += sizesurf;
       }
     } else {
       Surf::Tri *tris = surf->tris;
       int sizesurf = sizeof(Surf::Tri);
       surfint *csurfs = cells[icell].csurfs;
       for (int m = 0; m < nsurf; m++) {
-	isurf = csurfs[m];
-	if (memflag) memcpy(ptr,&tris[isurf],sizesurf);
-	ptr += sizesurf;
+        isurf = csurfs[m];
+        if (memflag) memcpy(ptr,&tris[isurf],sizesurf);
+        ptr += sizesurf;
       }
     }
     ptr = ROUNDUP(ptr);
@@ -474,11 +488,11 @@ int Grid::pack_one_adapt(char *inbuf, char *buf, int memflag)
       while (ip >= 0) {
         memcpy(ptr,&particles[ip],nbytes_particle);
         ptr += nbytes_particle;
-        if (ncustom) {
+        if (ncustom_particle) {
           particle->pack_custom(ip,ptr);
-          ptr += nbytes_custom;
+          ptr += nbytes_particle_custom;
         }
-	particles[ip].icell = -1;
+        particles[ip].icell = -1;
         ip = next[ip];
       }
 
@@ -495,17 +509,17 @@ int Grid::pack_one_adapt(char *inbuf, char *buf, int memflag)
         while (ip >= 0) {
           memcpy(ptr,&particles[ip],nbytes_particle);
           ptr += nbytes_particle;
-          if (ncustom) {
+          if (ncustom_particle) {
             particle->pack_custom(ip,ptr);
-            ptr += nbytes_custom;
+            ptr += nbytes_particle_custom;
           }
-	  particles[ip].icell = -1;
+          particles[ip].icell = -1;
           ip = next[ip];
         }
       }
     }
 
-  } else ptr += np * nbytes_total;
+  } else ptr += np * nbytes_particle_total;
 
   ptr = ROUNDUP(ptr);
   return ptr-buf;
@@ -536,14 +550,14 @@ int Grid::pack_particles(int icell, char *buf, int memflag)
     while (ip >= 0) {
       memcpy(ptr,&particles[ip],nbytes_particle);
       ptr += nbytes_particle;
-      if (ncustom) {
+      if (ncustom_particle) {
         particle->pack_custom(ip,ptr);
-        ptr += nbytes_custom;
+        ptr += nbytes_particle_custom;
       }
       particles[ip].icell = -1;
       ip = next[ip];
     }
-  } else ptr += np * nbytes_total;
+  } else ptr += np * nbytes_particle_total;
 
   ptr = ROUNDUP(ptr);
   return ptr-buf;
@@ -571,18 +585,18 @@ int Grid::unpack_particles(char *buf, int icell, int sortflag)
   Particle::OnePart *particles = particle->particles;
   int nplocal = particle->nlocal;
 
-  if (ncustom) {
+  if (ncustom_particle) {
     int n = nplocal;
     for (int i = 0; i < np; i++) {
       memcpy(&particles[n],ptr,nbytes_particle);
       ptr += nbytes_particle;
       particle->unpack_custom(ptr,n);
-      ptr += nbytes_custom;
+      ptr += nbytes_particle_custom;
       n++;
     }
   } else {
     memcpy(&particles[nplocal],ptr,np*nbytes_particle);
-    ptr += np*nbytes_particle;
+    ptr += np * nbytes_particle_total;
   }
 
   ptr = ROUNDUP(ptr);
@@ -617,13 +631,13 @@ void Grid::unpack_particles_adapt(int np, char *buf)
   Particle::OnePart *particles = particle->particles;
   int nplocal = particle->nlocal;
 
-  if (ncustom) {
+  if (ncustom_particle) {
     char *ptr = buf;
     for (int i = 0; i < np; i++) {
       memcpy(&particles[nplocal],ptr,nbytes_particle);
       ptr += nbytes_particle;
       particle->unpack_custom(ptr,nplocal);
-      ptr += nbytes_custom;
+      ptr += nbytes_particle_custom;
       nplocal++;
     }
   } else {
@@ -700,6 +714,7 @@ void Grid::compress()
       if (icell != nlocal) {
         memcpy(&cells[nlocal],&cells[icell],sizeof(ChildCell));
         memcpy(&cinfo[nlocal],&cinfo[icell],sizeof(ChildInfo));
+        if (ncustom) copy_custom(icell,nlocal);
         if (collide) collide->copy_grid_one(icell,nlocal);
         if (modify->n_pergrid) modify->copy_grid_one(icell,nlocal);
       }
@@ -750,6 +765,7 @@ void Grid::compress()
       if (icell != nlocal) {
         memcpy(&cells[nlocal],&cells[icell],sizeof(ChildCell));
         memcpy(&cinfo[nlocal],&cinfo[icell],sizeof(ChildInfo));
+        if (ncustom) copy_custom(icell,nlocal);
         if (collide) collide->copy_grid_one(icell,nlocal);
         if (modify->n_pergrid) modify->copy_grid_one(icell,nlocal);
       }

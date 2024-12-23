@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -29,11 +29,14 @@ class KokkosBase {
   virtual void post_process_grid_kokkos(int, int, DAT::t_float_2d_lr, int *,
                                    DAT::t_float_1d_strided) {}
 
-  DAT::t_float_1d d_vector;          // Kokkos version of computed vector
-  DAT::t_float_2d_lr d_array_grid;   // Kokkos version of computed per-grid array
+  //DAT::t_float_1d d_vector;        // Kokkos version of global vector
+  DAT::t_float_2d_lr d_array;        // Kokkos version of global array
+  DAT::t_float_1d d_vector_grid;     // Kokkos version of per-grid vector
+  DAT::t_float_2d_lr d_array_grid;   // Kokkos version of per-grid array
+  DAT::t_float_1d d_vector_particle;     // Kokkos version of per-particle vector
+  DAT::t_float_2d_lr d_array_particle;   // Kokkos version of per-particle array
 
-  DAT::tdual_float_2d_lr k_array;    // Kokkos version of computed array
-  DAT::t_float_2d_lr d_array;        // Kokkos version of computed array
+  DAT::tdual_float_2d_lr k_array;    // Kokkos DualView of global array
 };
 
 }

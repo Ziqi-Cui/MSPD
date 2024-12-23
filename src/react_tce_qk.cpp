@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -18,7 +18,7 @@
 #include "react_tce_qk.h"
 #include "update.h"
 #include "collide.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "memory.h"
 #include "error.h"
 
@@ -46,14 +46,18 @@ void ReactTCEQK::init()
   for (int i = 0; i < nlist; i++)
     if (rlist[i].active && rlist[i].type == RECOMBINATION)
       error->all(FLERR,
-                 "React qk does not currently support recombination reactions");
+                 "React tce/qk does not currently support recombination reactions");
+
+  if (computeChemRates)
+    error->all(FLERR,
+               "React tce/qk does not currently support the 'react_modify compute_chem_rates' option");
 }
 
 /* ---------------------------------------------------------------------- */
 
 int ReactTCEQK::attempt(Particle::OnePart *ip, Particle::OnePart *jp,
                         double pre_etrans, double pre_erot, double pre_evib,
-                        double &post_etotal, int &kspecies)
+                        double &post_etotal, int &kspecies, double Ttran)
 {
   double pre_etotal;
   double e_excess;
@@ -123,7 +127,7 @@ int ReactTCEQK::attempt_tce(Particle::OnePart *ip, Particle::OnePart *jp,
   if (pre_ave_rotdof > 0.1) ecc += pre_erot*r->coeff[0]/pre_ave_rotdof;
 
   double e_excess = ecc - r->coeff[1];
-  if (e_excess > 0.0) return 0;
+  if (e_excess <= 0.0) return 0;
 
   // compute probability of reaction
 
@@ -188,7 +192,7 @@ int ReactTCEQK::attempt_qk(Particle::OnePart *ip, Particle::OnePart *jp,
   if (pre_ave_rotdof > 0.1) ecc += pre_erot*r->coeff[0]/pre_ave_rotdof;
 
   double e_excess = ecc - r->coeff[1];
-  if (e_excess > 0.0) return 0;
+  if (e_excess <= 0.0) return 0;
 
   // compute probability of reaction
 

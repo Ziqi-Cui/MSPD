@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -19,7 +19,7 @@
 #include "collide.h"
 #include "comm.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "error.h"
 
@@ -36,15 +36,19 @@ FixVibmode::FixVibmode(SPARTA *sparta, int narg, char **arg) :
 {
   if (narg != 2) error->all(FLERR,"Illegal fix vibmode command");
 
-  flag_add_particle = 1;
+  flag_update_custom = 1;
 
   // random = RNG for vibrational mode initialization
 
-  random = new RanPark(update->ranmaster->uniform());
+  random = new RanKnuth(update->ranmaster->uniform());
   double seed = update->ranmaster->uniform();
   random->reset(seed,comm->me,100);
 
   // create per-particle array
+
+  if (!collide)
+    error->all(FLERR,"Cannot use fix vibmode without "
+               "collide style defined");
 
   if (collide->vibstyle != DISCRETE)
     error->all(FLERR,"Cannot use fix vibmode without "
@@ -55,13 +59,20 @@ FixVibmode::FixVibmode(SPARTA *sparta, int narg, char **arg) :
     error->all(FLERR,"No multiple vibrational modes in fix vibmode "
                "for any species");
 
-  vibmodeindex = particle->add_custom((char *) "vibmode",INT,maxmode);
+  // check if custom attribute already exists, due to restart file
+  // else create per-particle attribute
+
+  vibmodeindex = particle->find_custom((char *) "vibmode");
+  if (vibmodeindex < 0)
+    vibmodeindex = particle->add_custom((char *) "vibmode",INT,maxmode);
 }
 
 /* ---------------------------------------------------------------------- */
 
 FixVibmode::~FixVibmode()
 {
+  if (copy) return;
+
   delete random;
   particle->remove_custom(vibmodeindex);
 }
@@ -88,12 +99,13 @@ void FixVibmode::init()
 
 /* ----------------------------------------------------------------------
    called when a particle with index is created
+    or when temperature dependent properties need to be updated
    populate all vibrational modes and set evib = sum of mode energies
 ------------------------------------------------------------------------- */
 
-void FixVibmode::add_particle(int index, double temp_thermal,
-                              double temp_rot, double temp_vib,
-                              double *vstream)
+void FixVibmode::update_custom(int index, double temp_thermal,
+                               double temp_rot, double temp_vib,
+                               double *vstream)
 {
   int **vibmode = particle->eiarray[particle->ewhich[vibmodeindex]];
 

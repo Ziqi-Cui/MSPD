@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -41,7 +41,7 @@ class ComputeBoundaryKokkos : public ComputeBoundary, public KokkosBase {
 
   enum{XLO,XHI,YLO,YHI,ZLO,ZHI,INTERIOR};         // same as Domain
   enum{PERIODIC,OUTFLOW,REFLECT,SURFACE,AXISYM};  // same as Domain
-  enum{NUM,NUMWT,MFLUX,PRESS,XSHEAR,YSHEAR,ZSHEAR,KE,EROT,EVIB,ETOT};
+  enum{NUM,NUMWT,NFLUX,MFLUX,PRESS,XSHEAR,YSHEAR,ZSHEAR,KE,EROT,EVIB,ETOT};
 
 /* ----------------------------------------------------------------------
    tally values for a single particle colliding with boundary iface/istyle
@@ -106,6 +106,9 @@ void boundary_tally_kk(int iface, int istyle, int reaction,
       case NUMWT:
         a_myarray(iface,k++) += weight;
         break;
+      case NFLUX:
+        a_myarray(iface,k++) += weight;
+        break;
       case MFLUX:
         a_myarray(iface,k++) += origmass;
         break;
@@ -167,10 +170,17 @@ void boundary_tally_kk(int iface, int istyle, int reaction,
       case NUMWT:
         a_myarray(iface,k++) += weight;
         break;
+      case NFLUX:
+        a_myarray(iface,k) += weight;
+        if (ip) a_myarray(iface,k) -= weight;
+        if (jp) a_myarray(iface,k) -= weight;
+        k++;
+        break;
       case MFLUX:
-        a_myarray(iface,k++) += origmass;
-        if (ip) a_myarray(iface,k++) -= imass;
-        if (jp) a_myarray(iface,k++) -= jmass;
+        a_myarray(iface,k) += origmass;
+        if (ip) a_myarray(iface,k) -= imass;
+        if (jp) a_myarray(iface,k) -= jmass;
+        k++;
         break;
       case PRESS:
         MathExtraKokkos::scale3(-origmass,vorig,pdelta);

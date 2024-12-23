@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -94,13 +94,13 @@ void Finish::end(int flag, double time_multiple_runs)
 
   if (me == 0) {
     if (screen) fprintf(screen,
-			"Loop time of %g on %d procs for %d steps with "
-			BIGINT_FORMAT " particles\n",
-			time_loop,nprocs,update->nsteps,particle->nglobal);
+                        "Loop time of %g on %d procs for %d steps with "
+                        BIGINT_FORMAT " particles\n",
+                        time_loop,nprocs,update->nsteps,particle->nglobal);
     if (logfile) fprintf(logfile,
-			 "Loop time of %g on %d procs for %d steps with "
-			 BIGINT_FORMAT " particles\n",
-			 time_loop,nprocs,update->nsteps,particle->nglobal);
+                         "Loop time of %g on %d procs for %d steps with "
+                         BIGINT_FORMAT " particles\n",
+                         time_loop,nprocs,update->nsteps,particle->nglobal);
   }
 
   // timing breakdowns
@@ -149,7 +149,7 @@ void Finish::end(int flag, double time_multiple_runs)
     bigint nattempt_total = 0;
     bigint ncollide_total = 0;
     bigint nreact_total = 0;
-    int stuck_total;
+    int stuck_total,axibad_total;
 
     MPI_Allreduce(&update->nmove_running,&nmove_total,1,
                   MPI_SPARTA_BIGINT,MPI_SUM,world);
@@ -176,6 +176,7 @@ void Finish::end(int flag, double time_multiple_runs)
                     MPI_SPARTA_BIGINT,MPI_SUM,world);
     }
     MPI_Allreduce(&update->nstuck,&stuck_total,1,MPI_INT,MPI_SUM,world);
+    MPI_Allreduce(&update->naxibad,&axibad_total,1,MPI_INT,MPI_SUM,world);
 
     double pms,pmsp,ctps,cis,pfc,pfcwb,pfeb,schps,sclps,srps,caps,cps,rps;
     pms = pmsp = ctps = cis = pfc = pfcwb = pfeb =
@@ -227,6 +228,7 @@ void Finish::end(int flag, double time_multiple_runs)
         fprintf(screen,"Gas reactions     = " BIGINT_FORMAT " %s\n",
                 nreact_total,MathExtra::num2str(nreact_total,str));
         fprintf(screen,"Particles stuck   = %d\n",stuck_total);
+        fprintf(screen,"Axisymm bad moves = %d\n",axibad_total);
 
         fprintf(screen,"\n");
         fprintf(screen,"Particle-moves/CPUsec/proc: %g\n",pmsp);
@@ -268,6 +270,7 @@ void Finish::end(int flag, double time_multiple_runs)
         fprintf(logfile,"Reactions         = " BIGINT_FORMAT " %s\n",
                 nreact_total,MathExtra::num2str(nreact_total,str));
         fprintf(logfile,"Particles stuck   = %d\n",stuck_total);
+        fprintf(logfile,"Axisymm bad moves = %d\n",axibad_total);
 
         fprintf(logfile,"\n");
         fprintf(logfile,"Particle-moves/CPUsec/proc: %g\n",pmsp);
@@ -364,16 +367,16 @@ void Finish::end(int flag, double time_multiple_runs)
     stats(1,&tmp,&ave,&max,&min,10,histo);
     if (me == 0) {
       if (screen) {
-	fprintf(screen,"Particles: %g ave %g max %g min\n",ave,max,min);
-	fprintf(screen,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
-	fprintf(screen,"\n");
+        fprintf(screen,"Particles: %g ave %g max %g min\n",ave,max,min);
+        fprintf(screen,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
+        fprintf(screen,"\n");
       }
       if (logfile) {
-	fprintf(logfile,"Particles: %g ave %g max %g min\n",ave,max,min);
-	fprintf(logfile,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
-	fprintf(logfile,"\n");
+        fprintf(logfile,"Particles: %g ave %g max %g min\n",ave,max,min);
+        fprintf(logfile,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
+        fprintf(logfile,"\n");
       }
     }
 
@@ -381,16 +384,16 @@ void Finish::end(int flag, double time_multiple_runs)
     stats(1,&tmp,&ave,&max,&min,10,histo);
     if (me == 0) {
       if (screen) {
-	fprintf(screen,"Cells:     %g ave %g max %g min\n",ave,max,min);
-	fprintf(screen,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
-	fprintf(screen,"\n");
+        fprintf(screen,"Cells:     %g ave %g max %g min\n",ave,max,min);
+        fprintf(screen,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
+        fprintf(screen,"\n");
       }
       if (logfile) {
-	fprintf(logfile,"Cells:      %g ave %g max %g min\n",ave,max,min);
-	fprintf(logfile,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
-	fprintf(logfile,"\n");
+        fprintf(logfile,"Cells:      %g ave %g max %g min\n",ave,max,min);
+        fprintf(logfile,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
+        fprintf(logfile,"\n");
       }
     }
 
@@ -398,16 +401,16 @@ void Finish::end(int flag, double time_multiple_runs)
     stats(1,&tmp,&ave,&max,&min,10,histo);
     if (me == 0) {
       if (screen) {
-	fprintf(screen,"GhostCell: %g ave %g max %g min\n",ave,max,min);
-	fprintf(screen,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
-	fprintf(screen,"\n");
+        fprintf(screen,"GhostCell: %g ave %g max %g min\n",ave,max,min);
+        fprintf(screen,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
+        fprintf(screen,"\n");
       }
       if (logfile) {
-	fprintf(logfile,"GhostCell: %g ave %g max %g min\n",ave,max,min);
-	fprintf(logfile,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
-	fprintf(logfile,"\n");
+        fprintf(logfile,"GhostCell: %g ave %g max %g min\n",ave,max,min);
+        fprintf(logfile,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
+        fprintf(logfile,"\n");
       }
     }
 
@@ -415,16 +418,16 @@ void Finish::end(int flag, double time_multiple_runs)
     stats(1,&tmp,&ave,&max,&min,10,histo);
     if (me == 0) {
       if (screen) {
-	fprintf(screen,"EmptyCell: %g ave %g max %g min\n",ave,max,min);
-	fprintf(screen,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
-	fprintf(screen,"\n");
+        fprintf(screen,"EmptyCell: %g ave %g max %g min\n",ave,max,min);
+        fprintf(screen,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(screen," %d",histo[i]);
+        fprintf(screen,"\n");
       }
       if (logfile) {
-	fprintf(logfile,"EmptyCell: %g ave %g max %g min\n",ave,max,min);
-	fprintf(logfile,"Histogram:");
-	for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
-	fprintf(logfile,"\n");
+        fprintf(logfile,"EmptyCell: %g ave %g max %g min\n",ave,max,min);
+        fprintf(logfile,"Histogram:");
+        for (i = 0; i < 10; i++) fprintf(logfile," %d",histo[i]);
+        fprintf(logfile,"\n");
       }
     }
 
@@ -471,8 +474,8 @@ void Finish::end(int flag, double time_multiple_runs)
 /* ---------------------------------------------------------------------- */
 
 void Finish::stats(int n, double *data,
-		   double *pave, double *pmax, double *pmin,
-		   int nhisto, int *histo)
+                   double *pave, double *pmax, double *pmin,
+                   int nhisto, int *histo)
 {
   int i,m;
   int *histotmp;

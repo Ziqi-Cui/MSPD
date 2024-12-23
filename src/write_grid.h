@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -36,8 +36,14 @@ class WriteGrid : protected Pointers {
  private:
   FILE *fp;
 
+  int ncustom;               // number of custom per-grid attributes to output
+  int *index_custom,*type_custom,*size_custom;  // flags for custom attributes
+  int nvalues_custom;        // # of custom values per grid cell
+
   void header();
   void write();
+  void pack_custom(int, double *);
+  void write_custom(double *);
 };
 
 }

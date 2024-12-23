@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -187,7 +187,7 @@ void FixAveHistoWeightKokkos::calculate_weights()
         compute->invoked_flag |= INVOKED_PER_GRID;
       }
       if (j == 0) {
-        d_weights = computeKKBase->d_vector;
+        d_weights = computeKKBase->d_vector_particle;
       } else if (compute->array_grid) {
         d_weights = Kokkos::subview(computeKKBase->d_array_grid,Kokkos::ALL(),j-1);
       }
@@ -231,7 +231,7 @@ void FixAveHistoWeightKokkos::calculate_weights()
 
     } else if (kind == PERGRID) {
       if (j == 0) {
-        d_weights = fixKKBase->d_vector;
+        d_weights = fixKKBase->d_vector_particle;
       } else if (fixKKBase->d_array_grid.data()) {
         d_weights = Kokkos::subview(fixKKBase->d_array_grid,Kokkos::ALL(),j-1);
       }
@@ -297,7 +297,6 @@ void FixAveHistoWeightKokkos::bin_vector(
 
   auto policy = Kokkos::RangePolicy<TagFixAveHistoWeight_BinVector,DeviceType>(0, n);
   Kokkos::parallel_reduce(policy, *this, reducer);
-  DeviceType().fence();
 }
 
 /* ----------------------------------------------------------------------
@@ -336,7 +335,6 @@ void FixAveHistoWeightKokkos::bin_particles(
       auto policy = RangePolicy<TagFixAveHistoWeight_BinParticlesX4,DeviceType>(0, n);
       Kokkos::parallel_reduce(policy, *this, reducer);
     }
-    DeviceType().fence();
 
   } else if (attribute == V) {
 
@@ -353,7 +351,6 @@ void FixAveHistoWeightKokkos::bin_particles(
       auto policy = RangePolicy<TagFixAveHistoWeight_BinParticlesV4,DeviceType>(0, n);
       Kokkos::parallel_reduce(policy, *this, reducer);
     }
-    DeviceType().fence();
   }
 }
 
@@ -393,7 +390,6 @@ void FixAveHistoWeightKokkos::bin_particles(
     auto policy = RangePolicy<TagFixAveHistoWeight_BinParticles4,DeviceType>(0, n);
     Kokkos::parallel_reduce(policy, *this, reducer);
   }
-  DeviceType().fence();
 }
 
 /* ----------------------------------------------------------------------
@@ -419,7 +415,6 @@ void FixAveHistoWeightKokkos::bin_grid_cells(
     auto policy = RangePolicy<TagFixAveHistoWeight_BinGridCells2,DeviceType>(0, n);
     Kokkos::parallel_reduce(policy, *this, reducer);
   }
-  DeviceType().fence();
 }
 
 /* ------------------------------------------------------------------------- */

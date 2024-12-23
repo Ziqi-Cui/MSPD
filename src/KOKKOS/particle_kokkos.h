@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -23,16 +23,16 @@
 
 namespace SPARTA_NS {
 
-struct TagParticleZero_cellcount{};
 struct TagParticleCompressReactions{};
 struct TagCopyParticleReorderDestinations{};
 struct TagFixedMemoryReorder{};
 struct TagFixedMemoryReorderInit{};
 struct TagSetIcellFromPlist{};
-struct TagParticleReorder_COPYPARTICLELIST{};
+struct TagParticleReorder_COPYPARTICLELIST1{};
+struct TagParticleReorder_COPYPARTICLELIST2{};
 struct TagSetDPlistNewStyle{};
 
-template<int NEED_ATOMICS>
+template<int NEED_ATOMICS, int REORDER_FLAG>
 struct TagParticleSort{};
 
 
@@ -43,19 +43,29 @@ class ParticleKokkos : public Particle {
   // methods
 
   ParticleKokkos(class SPARTA *);
-  ~ParticleKokkos();
+  ~ParticleKokkos() override;
   static KOKKOS_INLINE_FUNCTION
   int add_particle_kokkos(t_particle_1d particles, int, int, int, int,
                            double *, double *, double, double);
 #ifndef SPARTA_KOKKOS_EXACT
-  void compress_migrate(int, int *);
+  void compress_migrate(int, int *) override;
 #endif
   void sort_kokkos();
-  void grow(int);
-  void grow_species();
+  void grow(int) override;
+  void grow_species() override;
   void pre_weight() override;
   void post_weight() override;
   void update_class_variables();
+
+  int add_custom(char *, int, int) override;
+  void grow_custom(int, int, int) override;
+  void remove_custom(int) override;
+  void copy_custom(int, int) override;
+  void pack_custom(int, char *) override;
+  void unpack_custom(char *, int) override;
+
+  KOKKOS_INLINE_FUNCTION
+  void copy_custom_kokkos(int, int) const;
 
 #ifndef SPARTA_KOKKOS_EXACT
   typedef typename Kokkos::Random_XorShift64_Pool<DeviceType>::generator_type rand_type;
@@ -71,22 +81,28 @@ class ParticleKokkos : public Particle {
   KOKKOS_INLINE_FUNCTION
   double evib(int, double, rand_type &) const;
 
+  KOKKOS_INLINE_FUNCTION
+  void pack_custom_kokkos(int, char *) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void unpack_custom_kokkos(char *, int) const;
+
   void wrap_kokkos();
   void sync(ExecutionSpace, unsigned int);
   void modify(ExecutionSpace, unsigned int);
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(TagParticleZero_cellcount, const int&) const;
-
-  KOKKOS_INLINE_FUNCTION
   void operator()(TagParticleCompressReactions, const int&) const;
 
-  template<int NEED_ATOMICS>
+  template<int NEED_ATOMICS, int REORDER_FLAG>
   KOKKOS_INLINE_FUNCTION
-  void operator()(TagParticleSort<NEED_ATOMICS>, const int&) const;
+  void operator()(TagParticleSort<NEED_ATOMICS,REORDER_FLAG>, const int&) const;
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(TagParticleReorder_COPYPARTICLELIST, const int, int&, const bool&) const;
+  void operator()(TagParticleReorder_COPYPARTICLELIST1, const int, int&, const bool&) const;
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(TagParticleReorder_COPYPARTICLELIST2, const int) const;
 
   KOKKOS_INLINE_FUNCTION
   void operator()(TagCopyParticleReorderDestinations, const int, int&, const bool&) const;
@@ -105,6 +121,14 @@ class ParticleKokkos : public Particle {
   tdual_species_1d k_species;
   DAT::tdual_int_2d k_species2group;
 
+  DAT::tdual_int_1d k_ewhich,k_eicol,k_edcol;
+
+  tdual_struct_tdual_int_1d_1d k_eivec;
+  tdual_struct_tdual_float_1d_1d k_edvec;
+
+  tdual_struct_tdual_int_2d_1d k_eiarray;
+  tdual_struct_tdual_float_2d_1d k_edarray;
+
   int sorted_kk;
 
   inline
@@ -119,8 +143,11 @@ class ParticleKokkos : public Particle {
 
  private:
   t_particle_1d d_particles;
-  t_particle_1d d_sorted;
   t_species_1d d_species;
+
+  t_particle_1d d_sorted;
+  DAT::t_int_1d d_sorted_id;
+  DAT::t_int_1d d_offsets_part;
   int nParticlesWksp;
   DAT::tdual_int_scalar k_reorder_pass;
   DAT::t_int_scalar d_reorder_pass;
@@ -134,16 +161,16 @@ class ParticleKokkos : public Particle {
   DAT::t_int_2d d_plist;
   DAT::t_int_1d d_cellcount;
 
-  DAT::t_int_2d d_lists;
+  DAT::t_int_2d_lr d_lists;
   DAT::t_int_1d d_mlist;
   DAT::t_int_1d d_slist;
 
-  HAT::t_int_2d h_lists;
+  HAT::t_int_2d_lr h_lists;
   HAT::t_int_1d h_mlist;
   HAT::t_int_1d h_slist;
 
-  DAT::t_int_scalar d_fail_flag;
-  HAT::t_int_scalar h_fail_flag;
+  DAT::t_int_scalar d_resize;
+  HAT::t_int_scalar h_resize;
 
   // work memory for reduced memory reordering
   t_particle_1d d_pswap1;
@@ -178,6 +205,44 @@ int ParticleKokkos::add_particle_kokkos(t_particle_1d particles, int index, int 
   }
 
   return realloc;
+}
+
+/* ----------------------------------------------------------------------
+   copy info for one particle in custom attribute vectors/arrays
+   into location I from location J
+------------------------------------------------------------------------- */
+
+KOKKOS_INLINE_FUNCTION
+void ParticleKokkos::copy_custom_kokkos(int i, int j) const
+{
+  int m,ncol;
+
+  // caller does not always check this
+  // shouldn't be a problem, but valgrind can complain if memcpy to self
+  // oddly memcpy(&particles[i],&particles[j],sizeof(OnePart)) seems OK
+
+  if (i == j) return;
+
+  // 4 flavors of vectors/arrays
+
+  if (ncustom_ivec) {
+    for (m = 0; m < ncustom_ivec; m++)
+      k_eivec.d_view[m].k_view.d_view[i] = k_eivec.d_view[m].k_view.d_view[j];
+  }
+  if (ncustom_iarray) {
+    for (m = 0; m < ncustom_iarray; m++)
+      for (ncol = 0; ncol < k_eicol.d_view[m]; ncol++)
+        k_eiarray.d_view[m].k_view.d_view(i,ncol) = k_eiarray.d_view[m].k_view.d_view(j,ncol);
+  }
+  if (ncustom_dvec) {
+    for (m = 0; m < ncustom_dvec; m++)
+      k_edvec.d_view[m].k_view.d_view[i] = k_edvec.d_view[m].k_view.d_view[j];
+  }
+  if (ncustom_darray) {
+    for (m = 0; m < ncustom_darray; m++)
+      for (ncol = 0; ncol < k_edcol.d_view[m]; ncol++)
+        k_edarray.d_view[m].k_view.d_view(i,ncol) = k_edarray.d_view[m].k_view.d_view(j,ncol);
+  }
 }
 
 
@@ -245,6 +310,89 @@ double ParticleKokkos::evib(int isp, double temp_thermal, rand_type &erandom) co
 
   return eng;
 }
+
+KOKKOS_INLINE_FUNCTION
+void ParticleKokkos::pack_custom_kokkos(int n, char *buf) const
+{
+  int i,j;
+  char *ptr = buf;
+
+  if (ncustom_ivec) {
+    for (i = 0; i < ncustom_ivec; i++) {
+      memcpy(ptr,&(k_eivec.d_view(i).k_view.d_view(n)),sizeof(int));
+      ptr += sizeof(int);
+    }
+  }
+  if (ncustom_iarray) {
+    for (i = 0; i < ncustom_iarray; i++) {
+      const int ncols = k_eicol.d_view[i];
+      for (j = 0; j < ncols; j++) {
+        memcpy(ptr,&(k_eiarray.d_view(i).k_view.d_view(n,j)),sizeof(int));
+        ptr += sizeof(int);
+      }
+    }
+  }
+
+  ptr = ROUNDUP(ptr);
+
+  if (ncustom_dvec) {
+    for (i = 0; i < ncustom_dvec; i++) {
+      memcpy(ptr,&(k_edvec.d_view(i).k_view.d_view(n)),sizeof(double));
+      ptr += sizeof(double);
+    }
+  }
+  if (ncustom_darray) {
+    for (i = 0; i < ncustom_darray; i++) {
+      const int ncols = k_edcol.d_view[i];
+      for (j = 0; j < ncols; j++) {
+        memcpy(ptr,&(k_edarray.d_view(i).k_view.d_view(n,j)),sizeof(double));
+        ptr += sizeof(double);
+      }
+    }
+  }
+}
+
+KOKKOS_INLINE_FUNCTION
+void ParticleKokkos::unpack_custom_kokkos(char *buf, int n) const
+{
+  int i,j;
+  char *ptr = buf;
+
+  if (ncustom_ivec) {
+    for (i = 0; i < ncustom_ivec; i++) {
+      memcpy(&(k_eivec.d_view(i).k_view.d_view(n)),ptr,sizeof(int));
+      ptr += sizeof(int);
+    }
+  }
+  if (ncustom_iarray) {
+    for (i = 0; i < ncustom_iarray; i++) {
+      const int ncols = k_eicol.d_view[i];
+      for (j = 0; j < ncols; j++) {
+        memcpy(&(k_eiarray.d_view(i).k_view.d_view(n,j)),ptr,sizeof(int));
+        ptr += sizeof(int);
+      }
+    }
+  }
+
+  ptr = ROUNDUP(ptr);
+
+  if (ncustom_dvec) {
+    for (i = 0; i < ncustom_dvec; i++) {
+      memcpy(&(k_edvec.d_view(i).k_view.d_view(n)),ptr,sizeof(double));
+      ptr += sizeof(double);
+    }
+  }
+  if (ncustom_darray) {
+    for (i = 0; i < ncustom_darray; i++) {
+      const int ncols = k_edcol.d_view[i];
+      for (j = 0; j < ncols; j++) {
+        memcpy(&(k_edarray.d_view(i).k_view.d_view(n,j)),ptr,sizeof(double));
+        ptr += sizeof(double);
+      }
+    }
+  }
+}
+
 
 }
 

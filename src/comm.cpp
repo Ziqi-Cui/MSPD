@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -36,6 +36,11 @@ Comm::Comm(SPARTA *sparta) : Pointers(sparta)
 {
   MPI_Comm_rank(world,&me);
   MPI_Comm_size(world,&nprocs);
+
+  if (me == 0) {
+    if (screen) fprintf(screen,"Running on %d MPI task(s)\n",nprocs);
+    if (logfile) fprintf(logfile,"Running on %d MPI task(s)\n",nprocs);
+  }
 
   ncomm = 0;
   commsortflag = 0;
@@ -175,7 +180,15 @@ int Comm::migrate_particles(int nmigrate, int *plist)
 
   // compress my list of particles
 
-  particle->compress_migrate(nmigrate,plist);
+  // for optimized particle moves, call compress_reactions rather than
+  //  compress_migrate since mlist is not guaranteed to be in ascending
+  //  order
+
+  if (update->optmove_flag)
+    particle->compress_reactions(nmigrate,plist);
+  else
+    particle->compress_migrate(nmigrate,plist);
+
   int ncompress = particle->nlocal;
 
   // create or augment irregular communication plan
@@ -232,11 +245,7 @@ int Comm::migrate_particles(int nmigrate, int *plist)
 
 void Comm::migrate_cells(int nmigrate)
 {
-  if (update->mem_limit_grid_flag)
-    update->set_mem_limit_grid();
-
-  if (update->global_mem_limit > 0 ||
-      (update->mem_limit_grid_flag && !grid->nlocal))
+  if (update->have_mem_limit())
     return migrate_cells_less_memory(nmigrate);
 
   int i,n;
@@ -696,12 +705,12 @@ void Comm::ring(int n, int nper, void *inbuf, int messtag,
      callback = caller function to invoke in rendezvous decomposition
                 takes input datums, returns output datums
      outorder = same as inorder, but for datums returned by callback()
+     outsize = byte size of each output datum
      ptr = pointer to caller class, passed to callback()
      statflag = 1 for stats output, else 0
    outputs:
      nout = # of output datums (function return)
      outbuf = vector of output datums
-     outsize = byte size of each output datum
    callback inputs:
      nrvous = # of rvous decomp datums in inbuf_rvous
      inbuf_rvous = vector of rvous decomp input datums
@@ -898,7 +907,7 @@ rendezvous_all2all(int n, char *inbuf, int insize, int inorder, int *procs,
                                                "rendezvous:inbuf");
 
   MPI_Alltoallv(inbuf_a2a,sendcount,sdispls,MPI_CHAR,
-		inbuf_rvous,recvcount,rdispls,MPI_CHAR,world);
+                inbuf_rvous,recvcount,rdispls,MPI_CHAR,world);
 
   if (!inorder) {
     memory->destroy(procs_a2a);
@@ -1004,7 +1013,7 @@ rendezvous_all2all(int n, char *inbuf, int insize, int inorder, int *procs,
   outbuf = (char *) memory->smalloc((bigint) nout*outsize,"rendezvous:outbuf");
 
   MPI_Alltoallv(outbuf_a2a,sendcount,sdispls,MPI_CHAR,
-		outbuf,recvcount,rdispls,MPI_CHAR,world);
+                outbuf,recvcount,rdispls,MPI_CHAR,world);
 
   memory->destroy(procs_rvous);
   memory->sfree(outbuf_rvous);

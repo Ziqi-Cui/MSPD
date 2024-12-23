@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -84,8 +84,23 @@ class Grid : protected Pointers {
   double tmap,tsplit;   // timing breakdowns of both grid2surf() algs
   double tcomm1,tcomm2,tcomm3,tcomm4;
 
-  int copy,copymode;    // 1 if copy of class (prevents deallocation of
-                        //  base class when child copy is destroyed)
+  int copy,uncopy,copymode; // used by Kokkos, prevent deallocation of
+                            //  base class when child copy is destroyed
+
+  // custom vectors/arrays for per-grid data
+  // ncustom > 0 if there is any custom per-grid datta
+  // these variables are public, others below are private
+
+  int ncustom;              // # of custom grid attributes, some may be deleted
+  char **ename;             // name of each attribute
+  int *etype;               // type = INT/DOUBLE of each attribute
+  int *esize;               // size = 0 for vector, N for array columns
+  int *ewhich;              // index into eivec,eiarray,edvec,edarray for data
+
+  int **eivec;              // pointer to each integer vector
+  int ***eiarray;           // pointer to each integer array
+  double **edvec;           // pointer to each double vector
+  double ***edarray;        // pointer to each double array
 
   int is_dt_weight;     // 1 if dt_weight of grid is not uniform
 
@@ -129,7 +144,7 @@ class Grid : protected Pointers {
   // includes unsplit cells, split cells, sub cells in any order
   // ghost cells are appended to owned
 
-  struct ChildCell {
+  struct SPARTA_ALIGN(64) ChildCell {
     cellint id;               // ID of child cell
     int level;                // level of cell in hierarchical grid, 0 = root
     int proc;                 // proc that owns this cell
@@ -183,7 +198,6 @@ class Grid : protected Pointers {
     int type;                 // OUTSIDE,INSIDE,OVERLAP,UNKNOWN
     int corner[8];            // corner flags, 4/8 in 2d/3d
                               // OUTSIDE,INSIDE,UNKNOWN
-                              // no OVERLAP is used for this anymore I think
                               // ordered x first, y next, z last
                               // for sub cells, type/corner
                               //   are same as in split cell containing them
@@ -244,6 +258,8 @@ class Grid : protected Pointers {
   int nlocal_restart;
   cellint *id_restart;
   int *level_restart,*nsplit_restart;
+  int *mask_restart;
+  char *cvalues_restart;
 
   class GridCommMacro* gridCommMacro;
   // methods
@@ -273,8 +289,8 @@ class Grid : protected Pointers {
 
   void refine_cell(int, int *, class Cut2d *, class Cut3d *);
   void coarsen_cell(cellint, int, double *, double *,
-		    int, int *, int *, int *, void **, char **,
-		    class Cut2d *, class Cut3d *);
+                    int, int *, int *, int *, void **, char **,
+                    class Cut2d *, class Cut3d *);
 
   void group(int, char **);
   int add_group(const char *);
@@ -292,6 +308,18 @@ class Grid : protected Pointers {
 
   void debug();
 
+  // grid_collate.cpp
+  // including callback function and callback data
+
+  void collate_vector_implicit(int, cellint *, double *, double *);
+  void collate_array_implicit(int, int, cellint *, double **, double **);
+  void owned_to_ghost_array(int, int, cellint *, double **, double **);
+
+  static int rendezvous_owned_to_ghost(int, char *, int &, int *&,
+                                       char *&, void *);
+  int ncol_rvous;
+  double **owned_data_rvous;
+
   // grid_comm.cpp
 
   int pack_one(int, char *, int, int, int, int);
@@ -302,25 +330,45 @@ class Grid : protected Pointers {
   void unpack_particles_adapt(int, char *);
   void compress();
 
+  // grid_custom.cpp
+
+  int find_custom(char *);
+  virtual int add_custom(char *, int, int);
+  virtual void allocate_custom(int);
+  virtual void reallocate_custom(int, int);
+  virtual void remove_custom(int);
+  virtual void copy_custom(int, int);
+
+  void write_restart_custom(FILE *);
+  void read_restart_custom(FILE *);
+  int sizeof_custom();
+  virtual int pack_custom(int, char *, int);
+  virtual int unpack_custom(char *, int);
+
   // grid_surf.cpp
 
   void surf2grid(int, int outflag=1);
   void surf2grid_implicit(int, int outflag=1);
   void surf2grid_one(int, int, int, int, class Cut3d *, class Cut2d *);
   void clear_surf();
+  void clear_surf_implicit();
   void clear_surf_restart();
   void combine_split_cell_particles(int, int);
   void assign_split_cell_particles(int);
-  int outside_surfs(int, double *, class Cut3d *, class Cut2d *);
+  int point_outside_surfs(int, double *);
+  int outside_surfs(int, double *, double *);
   void allocate_surf_arrays();
   int *csubs_request(int);
 
   // grid_id.cpp
 
+  void id_point_child(double *, double *, double *, int, int, int,
+                      int &, int &, int &);
+  cellint id_parent_of_child(cellint, int);
   int id_find_child(cellint, int, double *, double *, double *);
   cellint id_uniform_level(int, int, int, int);
   void id_find_child_uniform_level(int, int, double *, double *, double *,
-				   int &, int &, int &);
+                                   int &, int &, int &);
   cellint id_neigh_same_parent(cellint, int, int);
   cellint id_neigh_same_level(cellint, int, int);
   cellint id_refine(cellint, int, int);
@@ -362,6 +410,28 @@ class Grid : protected Pointers {
   class Cut2d *cut2d;
   class Cut3d *cut3d;
 
+  int unset_flag;          // flag for unset/reset neighbor methods
+
+  // Particle class values used for packing/unpacking particles in grid comm
+
+  int ncustom_particle;
+  int nbytes_particle,nbytes_particle_custom,nbytes_particle_total;
+
+  // custom vectors/arrays for per-grid data
+  // these variables are private, others above are public
+
+  int ncustom_ivec;         // # of integer vector attributes
+  int ncustom_iarray;       // # of integer array attributes
+  int *icustom_ivec;        // index into ncustom for each integer vector
+  int *icustom_iarray;      // index into ncustom for each integer array
+  int *eicol;               // # of columns in each integer array (esize)
+
+  int ncustom_dvec;         // # of double vector attributes
+  int ncustom_darray;       // # of double array attributes
+  int *icustom_dvec;        // index into ncustom for each double vector
+  int *icustom_darray;      // index into ncustom for each double array
+  int *edcol;               // # of columns in each double array (esize)
+
   // connection between one of my cells and a neighbor cell on another proc
 
   struct Connect {
@@ -398,6 +468,29 @@ class Grid : protected Pointers {
     Surf::Tri tri;
   };
 
+  // union data struct for packing 32-bit and 64-bit ints into double bufs
+  // this avoids aliasing issues by having 3 pointers (double,int,uint)
+  //   to same buf memory
+  // constructor for 32-bit int or uint prevents compiler
+  //   from possibly calling the double constructor when passed an int/uint
+  // copy to a double *buf:
+  //   buf[m++] = ubuf(foo).d, where foo is a 32-bit or 64-bit int or uint
+  // copy from a double *buf:
+  //   foo = (int) ubuf(buf[m++]).i or foo = (cellint) ubuf(buf[m++]).u
+  //         where (int) or (surfint) or (cellint) matches foo
+  //   the cast prevents compiler warnings about possible truncation
+
+  union ubuf {
+    double d;
+    int64_t i;
+    uint64_t u;
+    ubuf(double arg) : d(arg) {}
+    ubuf(int64_t arg) : i(arg) {}
+    ubuf(int arg) : i(arg) {}
+    ubuf(uint64_t arg) : u(arg) {}
+    ubuf(uint32_t arg) : u(arg) {}
+  };
+
   // surf ID hashes
 
 #ifdef SPARTA_MAP
@@ -411,25 +504,25 @@ class Grid : protected Pointers {
     typedef std::tr1::unordered_map<surfint,int>::iterator MyIterator;
 #endif
 
-  // Particle class values used for packing/unpacking particles in grid comm
-
-  int ncustom;
-  int nbytes_particle,nbytes_custom,nbytes_total;
-
   // private methods
 
   void surf2grid_cell_algorithm(int);
-  void surf2grid_new_algorithm(int);
-  void surf2grid_surf_algorithm(int, int);
+  void surf2grid_surf_algorithm(int);
   void surf2grid_split(int, int);
-
+  void recurse2d(cellint, int, double *, double *,
+                 int, Surf::Line *, double *, double *,
+                 int &, int &, int **&, MyHash *, MyHash *);
+  void recurse3d(cellint, int, double *, double *,
+                 int, Surf::Tri *, double *, double *,
+                 int &, int &, int **&, MyHash *, MyHash *);
   void partition_grid(int, int, int, int, int, int, int, int, GridTree *);
   void mybox(int, int, int, int &, int &, int &, int &, int &, int &,
-	     GridTree *);
+             GridTree *);
   void box_drop(int *, int *, int, int, GridTree *, int &, int *);
 
   void acquire_ghosts_all(int);
   void acquire_ghosts_near(int);
+  void acquire_ghosts_near_less_memory(int);
 
   void box_intersect(double *, double *, double *, double *,
                      double *, double *);
@@ -439,6 +532,9 @@ class Grid : protected Pointers {
   virtual void grow_cells(int, int);
   virtual void grow_pcells();
   virtual void grow_sinfo(int);
+
+  int point_outside_surfs_implicit(int, double *);
+  int point_outside_surfs_explicit(int, double *);
 
   void surf2grid_stats();
   void flow_stats();

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -46,7 +46,7 @@ Modify::Modify(SPARTA *sparta) : Pointers(sparta)
 
   end_of_step_every = NULL;
   list_pergrid = NULL;
-  list_add_particle = NULL;
+  list_update_custom = NULL;
   list_gas_react = NULL;
   list_surf_react = NULL;
   list_timeflag = NULL;
@@ -81,7 +81,7 @@ Modify::~Modify()
 
   delete [] end_of_step_every;
   delete [] list_pergrid;
-  delete [] list_add_particle;
+  delete [] list_update_custom;
   delete [] list_gas_react;
   delete [] list_surf_react;
   delete [] list_timeflag;
@@ -118,6 +118,7 @@ void Modify::init()
 
   for (i = 0; i < ncompute; i++) {
     compute[i]->init();
+    compute[i]->set_init();
     compute[i]->invoked_scalar = -1;
     compute[i]->invoked_vector = -1;
     compute[i]->invoked_array = -1;
@@ -230,15 +231,15 @@ void Modify::grid_changed()
 }
 
 /* ----------------------------------------------------------------------
-   invoke add_particle() method, only for relevant fixes
+   invoke update_custom() method, only for relevant fixes
 ------------------------------------------------------------------------- */
 
-void Modify::add_particle(int index, double temp_thermal,
-                          double temp_rot, double temp_vib, double *vstream)
+void Modify::update_custom(int index, double temp_thermal,
+			   double temp_rot, double temp_vib, double *vstream)
 {
-  for (int i = 0; i < n_add_particle; i++)
-    fix[list_add_particle[i]]->add_particle(index,temp_thermal,temp_rot,
-                                            temp_vib,vstream);
+  for (int i = 0; i < n_update_custom; i++)
+    fix[list_update_custom[i]]->update_custom(index,temp_thermal,temp_rot,
+                                              temp_vib,vstream);
 }
 
 /* ----------------------------------------------------------------------
@@ -437,6 +438,11 @@ void Modify::add_compute(int narg, char **arg)
   }
 
   ncompute++;
+
+  // post_constructor() can call virtual methods in parent or child
+  //   which would otherwise not yet be visible in child class
+
+  compute[ncompute-1]->post_constructor();
 }
 
 /* ----------------------------------------------------------------------
@@ -554,27 +560,27 @@ void Modify::list_init_end_of_step(int mask, int &n, int *&list)
 void Modify::list_init_fixes()
 {
   delete [] list_pergrid;
-  delete [] list_add_particle;
+  delete [] list_update_custom;
   delete [] list_gas_react;
   delete [] list_surf_react;
 
-  n_pergrid = n_add_particle = n_gas_react = n_surf_react = 0;
+  n_pergrid = n_update_custom = n_gas_react = n_surf_react = 0;
   for (int i = 0; i < nfix; i++) {
     if (fix[i]->gridmigrate) n_pergrid++;
-    if (fix[i]->flag_add_particle) n_add_particle++;
+    if (fix[i]->flag_update_custom) n_update_custom++;
     if (fix[i]->flag_gas_react) n_gas_react++;
     if (fix[i]->flag_surf_react) n_surf_react++;
   }
 
   list_pergrid = new int[n_pergrid];
-  list_add_particle = new int[n_add_particle];
+  list_update_custom = new int[n_update_custom];
   list_gas_react = new int[n_gas_react];
   list_surf_react = new int[n_surf_react];
 
-  n_pergrid = n_add_particle = n_gas_react = n_surf_react = 0;
+  n_pergrid = n_update_custom = n_gas_react = n_surf_react = 0;
   for (int i = 0; i < nfix; i++) {
     if (fix[i]->gridmigrate) list_pergrid[n_pergrid++] = i;
-    if (fix[i]->flag_add_particle) list_add_particle[n_add_particle++] = i;
+    if (fix[i]->flag_update_custom) list_update_custom[n_update_custom++] = i;
     if (fix[i]->flag_gas_react) list_gas_react[n_gas_react++] = i;
     if (fix[i]->flag_surf_react) list_surf_react[n_surf_react++] = i;
   }

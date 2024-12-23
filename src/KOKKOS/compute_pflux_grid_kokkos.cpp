@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -126,7 +126,6 @@ void ComputePFluxGridKokkos::compute_per_grid_kokkos()
     else
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputePFluxGrid_compute_per_grid_atomic<0> >(0,nlocal),*this);
   }
-  DeviceType().fence();
   copymode = 0;
 
   if (need_dup) {
@@ -144,7 +143,7 @@ template<int NEED_ATOMICS>
 KOKKOS_INLINE_FUNCTION
 void ComputePFluxGridKokkos::operator()(TagComputePFluxGrid_compute_per_grid_atomic<NEED_ATOMICS>, const int &i) const {
 
-  // The tally array is duplicated for OpenMP, atomic for CUDA, and neither for Serial
+  // The tally array is duplicated for OpenMP, atomic for GPUs, and neither for Serial
 
   auto v_tally = ScatterViewHelper<typename NeedDup<NEED_ATOMICS,DeviceType>::value,decltype(dup_tally),decltype(ndup_tally)>::get(dup_tally,ndup_tally);
   auto a_tally = v_tally.template access<typename AtomicDup<NEED_ATOMICS,DeviceType>::value>();
@@ -297,13 +296,12 @@ void ComputePFluxGridKokkos::post_process_grid_kokkos(int index, int nsample,
     nsample = 1;
     d_etally = d_tally;
     emap = map[index];
-    d_vec = d_vector;
+    d_vec = d_vector_grid;
     nstride = 1;
   }
 
   this->d_etally = d_etally;
   this->d_vec = d_vec;
-  this->nstride = nstride;
   this->nsample = nsample;
 
   // compute normalized final value for each grid cell
@@ -332,7 +330,6 @@ void ComputePFluxGridKokkos::post_process_grid_kokkos(int index, int nsample,
       mvv = emap[2];
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputePFluxGrid_post_process_grid_diag>(lo,hi),*this);
-      DeviceType().fence();
       copymode = 0;
       break;
     }
@@ -345,7 +342,6 @@ void ComputePFluxGridKokkos::post_process_grid_kokkos(int index, int nsample,
       mvv = emap[3];
       copymode = 1;
       Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputePFluxGrid_post_process_grid_offdiag>(lo,hi),*this);
-      DeviceType().fence();
       copymode = 0;
       break;
     }
@@ -393,7 +389,7 @@ void ComputePFluxGridKokkos::reallocate()
   memoryKK->destroy_kokkos(k_tally,tally);
   nglocal = grid->nlocal;
   memoryKK->create_kokkos(k_vector_grid,vector_grid,nglocal,"pflux/grid:vector_grid");
-  d_vector = k_vector_grid.d_view;
+  d_vector_grid = k_vector_grid.d_view;
   memoryKK->create_kokkos(k_tally,tally,nglocal,ntotal,"pflux/grid:tally");
   d_tally = k_tally.d_view;
 }

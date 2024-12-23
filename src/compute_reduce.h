@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -35,17 +35,25 @@ class ComputeReduce : public Compute {
   bigint memory_usage();
 
  protected:
-  int me;
+  int me,nprocs;
   int mode,nvalues,iregion;
+  double area_total;
   int *which,*argindex,*flavor,*value2index;
   char **ids;
   double *onevec;
   int *replace,*indices,*owner;
   int index;
-  char *idregion;
 
-  int maxparticle,maxgrid;
-  double *varparticle,*vargrid;
+  char *subsetID;
+  int isubset;
+  int *s2g;
+  int gridgroupbit,surfgroupbit;
+
+  int maxparticle,maxgrid,maxsurf;
+  double *varparticle,*vargrid,*varsurf;
+
+  int *smasks;
+  double *areasurf;
 
   struct Pair {
     double value;
@@ -54,7 +62,8 @@ class ComputeReduce : public Compute {
   Pair pairme,pairall;
 
   double compute_one(int, int);
-  bigint count(int);
+  bigint count_included();
+  double area_per_surf();
   void combine(double &, double, int);
 };
 

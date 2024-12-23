@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -73,6 +73,11 @@ class CollideVSS : public Collide {
   };
 
  protected:
+
+  double ksi_tran_MP;  //modify, translational DOF of pre_collision particles in dissolation reaction(2024.5.8)
+  double mass_M, mass_P; //modify, mass of pre_collision particles in dissolation reaction(2024.5.9)
+  double alpha_MP; //modify, VSS_alpha of pre_collision particles in dissolation reaction(2024.5.9)
+
   int relaxflag,eng_exchange;
   double vr_indice;
   double **prefactor; // static portion of collision attempt frequency
@@ -84,9 +89,9 @@ class CollideVSS : public Collide {
   int nparams;                // # of per-species params read in
 
   void SCATTER_TwoBodyScattering(Particle::OnePart *,
-				 Particle::OnePart *);
+                                 Particle::OnePart *);
   void EEXCHANGE_NonReactingEDisposal(Particle::OnePart *,
-				      Particle::OnePart *);
+                                      Particle::OnePart *);
   void SCATTER_ThreeBodyScattering(Particle::OnePart *,
                                    Particle::OnePart *,
                                    Particle::OnePart *);
@@ -94,7 +99,7 @@ class CollideVSS : public Collide {
                                    Particle::OnePart *,
                                    Particle::OnePart *);
 
-  double sample_bl(RanPark *, double, double);
+  double sample_bl(RanKnuth *, double, double);
   double rotrel (int, double);
   double vibrel (int, double);
 

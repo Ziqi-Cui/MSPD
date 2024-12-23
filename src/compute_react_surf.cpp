@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -65,7 +65,7 @@ ComputeReactSurf::ComputeReactSurf(SPARTA *sparta, int narg, char **arg) :
       char *copy = new char[n];
       strcpy(copy,&arg[iarg][2]);
       char *ptr = copy;
-      while (ptr = strtok(ptr,"/")) {
+      while ((ptr = strtok(ptr,"/")) != (char *) NULL) {
         for (int ireaction = 0; ireaction < ntotal; ireaction++) {
           reaction2col[ireaction][icol] = 0;
           if (which == REACTANT) {
@@ -152,7 +152,7 @@ void ComputeReactSurf::init()
     char str[128];
     sprintf(str,
             "Compute react/surf " BIGINT_FORMAT
-	    " surfs are not assigned to surf react model",flagall);
+            " surfs are not assigned to surf react model",flagall);
     error->warning(FLERR,str);
   }
 
@@ -282,13 +282,6 @@ void ComputeReactSurf::post_process_surf()
     maxsurf = nown;
     memory->create(array_surf,maxsurf,ntotal,"react/surf:array_surf");
   }
-
-  // zero array_surf
-
-  int i,j;
-  for (i = 0; i < nown; i++)
-    for (j = 0; j < ntotal; j++)
-      array_surf[i][j] = 0.0;
 
   // collate entire array of results
 

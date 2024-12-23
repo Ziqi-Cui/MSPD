@@ -28,7 +28,7 @@ make
 # Install the binaries and libraries
 make install
 ```
-# Sparta preset files
+# SPARTA preset files
 The sparta build system provides commonly used configuration settings as cmake files under
 `/path/to/sparta/cmake/presets`. This allows developers to quickly set
 configuration knobs before building sparta.
@@ -38,28 +38,30 @@ configuration knobs before building sparta.
 cmake -C /path/to/<NAME>.cmake /path/to/sparta/cmake
 ```
 
-# Sparta Keyword Listing
+# SPARTA Keyword Listing
 ## Package options
 * PKG_FFT
-  * Whether to enable the Sparta FFT package.
+  * Whether to enable the SPARTA FFT package.
 * PKG_KOKKOS
-  * Whether to enable the Sparta KOKKOS package.
+  * Whether to enable the SPARTA KOKKOS package.
 * PKG_MPI_STUBS
-  * Whether to enable the Sparta MPI_STUBS package.
+  * Whether to enable the SPARTA MPI_STUBS package.
 
 ## Third Party Library (TPL) options
 * BUILD_KOKKOS
-  * Whether to enable the Sparta KOKKOS TPL.
+  * Whether to enable the SPARTA KOKKOS TPL.
 * BUILD_MPI
-  * Whether to enable the Sparta MPI TPL.
+  * Whether to enable the SPARTA MPI TPL.
 * BUILD_JPEG
-  * Whether to enable the Sparta JPEG TPL.
+  * Whether to enable the SPARTA JPEG TPL.
 * BUILD_PNG
-  * Whether to enable the Sparta PNG TPL.
+  * Whether to enable the SPARTA PNG TPL.
 * BUILD_MPI
-  * Whether to enable the Sparta MPI TPL.
+  * Whether to enable the SPARTA MPI TPL.
 * FFT
-  * Which Sparta FFT TPL to enable: FFTW2, FFTW3, or MKL.
+  * Which SPARTA FFT TPL to enable: FFTW3, MKL, or KISS.
+* FFT_KOKKOS
+  * Which SPARTA Kokkos FFT TPL to enable: CUFFT, HIPFFT, FFTW3, MKL, or KISS.
 
 Note: To point to a TPL installation, export <TPL>_ROOT=/path/to/tpl/install
 before running cmake.
@@ -72,11 +74,18 @@ before running cmake.
 * SPARTA_DEFAULT_CXX_COMPILE_FLAGS
   * Default compiler flags used when building object files for `spa_$SPARTA_MACHINE`.
 * SPARTA_LIST_PKGS
-  * Print the Sparta packages and exit.
+  * Print the SPARTA packages and exit.
 * SPARTA_LIST_TPLS
-  * Print the Sparta TPLs and exit.
+  * Print the SPARTA TPLs and exit.
 * SPARTA_ENABLE_TESTING
   * Add tests in examples to be run via ctest.
+* SPARTA_ENABLE_PARAVIEW_TESTING
+  * Enable ParaView tests. Default if OFF.
+  * When ON, must specify SPARTA_PARAVIEW_BIN_DIR and SPARTA_PARAVIEW_MPIEXEC.
+* SPARTA_PARAVIEW_BIN_DIR
+  * Path to ParaView bin directory containing pvbatch and pvpython.
+* SPARTA_PARAVIEW_MPIEXEC
+  * Path to program used to start ParaView mpi jobs, typically mpiexec in SPARTA_PARAVIEW_BIN_DIR.
 * SPARTA_DSMC_TESTING_PATH
   * Add tests in SPARTA_DSMC_TESTING_PATH/examples to be run via ctest.
   * Run all tests via SPARTA_DSMC_TESTING_PATH/regression.py.

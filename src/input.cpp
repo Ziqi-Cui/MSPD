@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -484,7 +484,8 @@ void Input::substitute(char *&str, char *&str2, int &max, int &max2, int flag)
 }
 
 /* ----------------------------------------------------------------------
-   expand arg to earg, for arguments with syntax c_ID[*] or f_ID[*]
+   expand arg to earg, for arguments with syntax c_ID[*], f_ID[*],
+     p_ID[*], g_ID[*], or s_ID[*]
    fields to consider in input arg range from iarg to narg
    return new expanded # of values, and copy them w/out "*" into earg
    if any expansion occurs, earg is new allocation, must be freed by caller
@@ -493,7 +494,7 @@ void Input::substitute(char *&str, char *&str2, int &max, int &max2, int flag)
 
 int Input::expand_args(int narg, char **arg, int mode, char **&earg)
 {
-  int n,iarg,index,nlo,nhi,nmax,expandflag,icompute,ifix;
+  int n,iarg,index,nlo,nhi,nmax,expandflag,icompute,ifix,icustom;
   char *ptr1,*ptr2,*str;
 
   ptr1 = NULL;
@@ -517,76 +518,127 @@ int Input::expand_args(int narg, char **arg, int mode, char **&earg)
     expandflag = 0;
 
     if (strncmp(arg[iarg],"c_",2) == 0 ||
-        strncmp(arg[iarg],"f_",2) == 0) {
+        strncmp(arg[iarg],"f_",2) == 0 ||
+        strncmp(arg[iarg],"p_",2) == 0 ||
+        strncmp(arg[iarg],"g_",2) == 0 ||
+        strncmp(arg[iarg],"s_",2) == 0) {
 
       ptr1 = strchr(&arg[iarg][2],'[');
       if (ptr1) {
-	ptr2 = strchr(ptr1,']');
-	if (ptr2) {
-	  *ptr2 = '\0';
-	  if (strchr(ptr1,'*')) {
-	    if (arg[iarg][0] == 'c') {
-	      *ptr1 = '\0';
-	      icompute = modify->find_compute(&arg[iarg][2]);
-	      *ptr1 = '[';
+        ptr2 = strchr(ptr1,']');
+        if (ptr2) {
+          *ptr2 = '\0';
+          if (strchr(ptr1,'*')) {
+
+            // compute
+
+            if (arg[iarg][0] == 'c') {
+              *ptr1 = '\0';
+              icompute = modify->find_compute(&arg[iarg][2]);
+              *ptr1 = '[';
 
               // check for global vector/array,
               // per-particle array, per-grid array, per-surf array
 
-	      if (icompute >= 0) {
-		if (mode == 0 && modify->compute[icompute]->vector_flag) {
-		  nmax = modify->compute[icompute]->size_vector;
-		  expandflag = 1;
-		} else if (mode == 1 && modify->compute[icompute]->array_flag) {
-		  nmax = modify->compute[icompute]->size_array_cols;
-		  expandflag = 1;
+              if (icompute >= 0) {
+                if (mode == 0 && modify->compute[icompute]->vector_flag) {
+                  nmax = modify->compute[icompute]->size_vector;
+                  expandflag = 1;
+                } else if (mode == 1 && modify->compute[icompute]->array_flag) {
+                  nmax = modify->compute[icompute]->size_array_cols;
+                  expandflag = 1;
                 } else if (modify->compute[icompute]->per_particle_flag &&
                            modify->compute[icompute]->size_per_particle_cols) {
-		  nmax = modify->compute[icompute]->size_per_particle_cols;
-		  expandflag = 1;
+                  nmax = modify->compute[icompute]->size_per_particle_cols;
+                  expandflag = 1;
                 } else if (modify->compute[icompute]->per_grid_flag &&
                            modify->compute[icompute]->size_per_grid_cols) {
-		  nmax = modify->compute[icompute]->size_per_grid_cols;
-		  expandflag = 1;
+                  nmax = modify->compute[icompute]->size_per_grid_cols;
+                  expandflag = 1;
                 } else if (modify->compute[icompute]->per_surf_flag &&
                            modify->compute[icompute]->size_per_surf_cols) {
-		  nmax = modify->compute[icompute]->size_per_surf_cols;
-		  expandflag = 1;
-		}
-	      }	
-	    } else if (arg[iarg][0] == 'f') {
-	      *ptr1 = '\0';
-	      ifix = modify->find_fix(&arg[iarg][2]);
-	      *ptr1 = '[';
+                  nmax = modify->compute[icompute]->size_per_surf_cols;
+                  expandflag = 1;
+                }
+              }
+
+            // fix
+
+            } else if (arg[iarg][0] == 'f') {
+              *ptr1 = '\0';
+              ifix = modify->find_fix(&arg[iarg][2]);
+              *ptr1 = '[';
 
               // check for global vector/array,
               // per-particle array, per-grid array, per-surf array
 
-	      if (ifix >= 0) {
-		if (mode == 0 && modify->fix[ifix]->vector_flag) {
-		  nmax = modify->fix[ifix]->size_vector;
-		  expandflag = 1;
-		} else if (mode == 1 && modify->fix[ifix]->array_flag) {
-		  nmax = modify->fix[ifix]->size_array_cols;
-		  expandflag = 1;
+              if (ifix >= 0) {
+                if (mode == 0 && modify->fix[ifix]->vector_flag) {
+                  nmax = modify->fix[ifix]->size_vector;
+                  expandflag = 1;
+                } else if (mode == 1 && modify->fix[ifix]->array_flag) {
+                  nmax = modify->fix[ifix]->size_array_cols;
+                  expandflag = 1;
                 } else if (modify->fix[ifix]->per_particle_flag &&
                            modify->fix[ifix]->size_per_particle_cols) {
-		  nmax = modify->fix[ifix]->size_per_particle_cols;
-		  expandflag = 1;
+                  nmax = modify->fix[ifix]->size_per_particle_cols;
+                  expandflag = 1;
                 } else if (modify->fix[ifix]->per_grid_flag &&
                            modify->fix[ifix]->size_per_grid_cols) {
-		  nmax = modify->fix[ifix]->size_per_grid_cols;
-		  expandflag = 1;
+                  nmax = modify->fix[ifix]->size_per_grid_cols;
+                  expandflag = 1;
                 } else if (modify->fix[ifix]->per_surf_flag &&
                            modify->fix[ifix]->size_per_surf_cols) {
-		  nmax = modify->fix[ifix]->size_per_surf_cols;
-		  expandflag = 1;
-		}
-	      }
-	    }
-	  }
-	  *ptr2 = ']';
-	}
+                  nmax = modify->fix[ifix]->size_per_surf_cols;
+                  expandflag = 1;
+                }
+              }
+
+            // per-particle custom attribute
+
+            } else if (arg[iarg][0] == 'p') {
+              *ptr1 = '\0';
+              icustom = particle->find_custom(&arg[iarg][2]);
+              *ptr1 = '[';
+
+              if (icustom >= 0) {
+                if (particle->esize[icustom]) {
+                  nmax = particle->esize[icustom];
+                  expandflag = 1;
+                }
+              }
+
+            // per-grid custom attribute
+
+            } else if (arg[iarg][0] == 'g') {
+              *ptr1 = '\0';
+              icustom = grid->find_custom(&arg[iarg][2]);
+              *ptr1 = '[';
+
+              if (icustom >= 0) {
+                if (grid->esize[icustom]) {
+                  nmax = grid->esize[icustom];
+                  expandflag = 1;
+                }
+              }
+
+            // per-surf custom attribute
+
+            } else if (arg[iarg][0] == 's') {
+              *ptr1 = '\0';
+              icustom = surf->find_custom(&arg[iarg][2]);
+              *ptr1 = '[';
+
+              if (icustom >= 0) {
+                if (surf->esize[icustom]) {
+                  nmax = surf->esize[icustom];
+                  expandflag = 1;
+                }
+              }
+            }
+          }
+          *ptr2 = ']';
+        }
       }
     }
 
@@ -595,23 +647,23 @@ int Input::expand_args(int narg, char **arg, int mode, char **&earg)
       bounds(ptr1+1,nmax,nlo,nhi);
       *ptr2 = ']';
       if (newarg+nhi-nlo+1 > maxarg) {
-	maxarg += nhi-nlo+1;
-	earg = (char **)
+        maxarg += nhi-nlo+1;
+        earg = (char **)
           memory->srealloc(earg,maxarg*sizeof(char *),"input:earg");
       }
       for (index = nlo; index <= nhi; index++) {
-	n = strlen(arg[iarg]) + 16;   // 16 = space for large inserted integer
-	str = earg[newarg] = new char[n];
-	strncpy(str,arg[iarg],ptr1+1-arg[iarg]);
-	sprintf(&str[ptr1+1-arg[iarg]],"%d",index);
-	strcat(str,ptr2);
+        n = strlen(arg[iarg]) + 16;   // 16 = space for large inserted integer
+        str = earg[newarg] = new char[n];
+        strncpy(str,arg[iarg],ptr1+1-arg[iarg]);
+        sprintf(&str[ptr1+1-arg[iarg]],"%d",index);
+        strcat(str,ptr2);
         newarg++;
       }
 
     } else {
       if (newarg == maxarg) {
-	maxarg++;
-	earg = (char **)
+        maxarg++;
+        earg = (char **)
           memory->srealloc(earg,maxarg*sizeof(char *),"input:earg");
       }
       n = strlen(arg[iarg]) + 1;
@@ -686,6 +738,7 @@ int Input::execute_command()
   else if (!strcmp(command,"restart")) restart();
   else if (!strcmp(command,"seed")) seed();
   else if (!strcmp(command,"species")) species();
+  else if (!strcmp(command,"species_modify")) species_modify();
   else if (!strcmp(command,"stats")) stats();
   else if (!strcmp(command,"stats_modify")) stats_modify();
   else if (!strcmp(command,"stats_style")) stats_style();
@@ -1104,7 +1157,7 @@ void Input::shell()
 
   if (strcmp(arg[0],"cd") == 0) {
     if (narg != 2) error->all(FLERR,"Illegal shell cd command");
-    chdir(arg[1]);
+    int tmp = chdir(arg[1]);
 
   } else if (strcmp(arg[0],"mkdir") == 0) {
     if (narg < 2) error->all(FLERR,"Illegal shell mkdir command");
@@ -1156,7 +1209,7 @@ void Input::shell()
       strcat(work,arg[i]);
     }
 
-    if (me == 0) system(work);
+    if (me == 0) int tmp = system(work);
   }
 }
 
@@ -1414,6 +1467,13 @@ void Input::species()
 
 /* ---------------------------------------------------------------------- */
 
+void Input::species_modify()
+{
+  particle->species_modify(narg,arg);
+}
+
+/* ---------------------------------------------------------------------- */
+
 void Input::stats()
 {
   output->set_stats(narg,arg);
@@ -1637,5 +1697,3 @@ int Input::count_words(char *line)
   memory->sfree(copy);
   return n;
 }
-
-

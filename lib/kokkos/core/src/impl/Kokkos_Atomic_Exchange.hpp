@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
 #include <xmmintrin.h>
@@ -49,10 +21,6 @@
 #include <Kokkos_Macros.hpp>
 #if defined(KOKKOS_ATOMIC_HPP) && !defined(KOKKOS_ATOMIC_EXCHANGE_HPP)
 #define KOKKOS_ATOMIC_EXCHANGE_HPP
-
-#if defined(KOKKOS_ENABLE_CUDA)
-#include <Cuda/Kokkos_Cuda_Version_9_8_Compatibility.hpp>
-#endif
 
 namespace Kokkos {
 
@@ -82,9 +50,9 @@ __inline__ __device__ unsigned long long int atomic_exchange(
 
 /** \brief  Atomic exchange for any type with compatible size */
 template <typename T>
-__inline__ __device__ T atomic_exchange(
-    volatile T* const dest,
-    typename std::enable_if<sizeof(T) == sizeof(int), const T&>::type val) {
+__inline__ __device__ T
+atomic_exchange(volatile T* const dest,
+                std::enable_if_t<sizeof(T) == sizeof(int), const T&> val) {
   // int tmp = __ullAtomicExch( (int*) dest , *((int*)&val) );
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
@@ -97,9 +65,10 @@ __inline__ __device__ T atomic_exchange(
 template <typename T>
 __inline__ __device__ T atomic_exchange(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) != sizeof(int) &&
-                                sizeof(T) == sizeof(unsigned long long int),
-                            const T&>::type val) {
+    std::enable_if_t<sizeof(T) != sizeof(int) &&
+                         sizeof(T) == sizeof(unsigned long long int),
+                     const T&>
+        val) {
   using type = unsigned long long int;
 
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
@@ -112,23 +81,18 @@ __inline__ __device__ T atomic_exchange(
 }
 
 template <typename T>
-__inline__ __device__ T
-atomic_exchange(volatile T* const dest,
-                typename std::enable_if<(sizeof(T) != 4) && (sizeof(T) != 8),
-                                        const T>::type& val) {
+__inline__ __device__ T atomic_exchange(
+    volatile T* const dest,
+    std::enable_if_t<(sizeof(T) != 4) && (sizeof(T) != 8), const T>& val) {
   T return_val;
   // This is a way to (hopefully) avoid dead lock in a warp
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
 #endif
 
-  int done = 0;
-#ifdef KOKKOS_IMPL_CUDA_SYNCWARP_NEEDS_MASK
-  unsigned int mask   = KOKKOS_IMPL_CUDA_ACTIVEMASK;
-  unsigned int active = KOKKOS_IMPL_CUDA_BALLOT_MASK(mask, 1);
-#else
-  unsigned int active = KOKKOS_IMPL_CUDA_BALLOT(1);
-#endif
+  int done                 = 0;
+  unsigned int mask        = __activemask();
+  unsigned int active      = __ballot_sync(mask, 1);
   unsigned int done_active = 0;
   while (active != done_active) {
     if (!done) {
@@ -141,11 +105,7 @@ atomic_exchange(volatile T* const dest,
         done = 1;
       }
     }
-#ifdef KOKKOS_IMPL_CUDA_SYNCWARP_NEEDS_MASK
-    done_active = KOKKOS_IMPL_CUDA_BALLOT_MASK(mask, done);
-#else
-    done_active = KOKKOS_IMPL_CUDA_BALLOT(done);
-#endif
+    done_active = __ballot_sync(mask, done);
   }
   return return_val;
 }
@@ -153,7 +113,7 @@ atomic_exchange(volatile T* const dest,
 template <typename T>
 __inline__ __device__ void atomic_assign(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) == sizeof(int), const T&>::type val) {
+    std::enable_if_t<sizeof(T) == sizeof(int), const T&> val) {
   // (void) __ullAtomicExch( (int*) dest , *((int*)&val) );
   (void)atomicExch(((int*)dest), *((int*)&val));
 }
@@ -161,9 +121,10 @@ __inline__ __device__ void atomic_assign(
 template <typename T>
 __inline__ __device__ void atomic_assign(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) != sizeof(int) &&
-                                sizeof(T) == sizeof(unsigned long long int),
-                            const T&>::type val) {
+    std::enable_if_t<sizeof(T) != sizeof(int) &&
+                         sizeof(T) == sizeof(unsigned long long int),
+                     const T&>
+        val) {
   using type = unsigned long long int;
   // (void) __ullAtomicExch( (type*) dest , *((type*)&val) );
   (void)atomicExch(((type*)dest), *((type*)&val));
@@ -172,9 +133,10 @@ __inline__ __device__ void atomic_assign(
 template <typename T>
 __inline__ __device__ void atomic_assign(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) != sizeof(int) &&
-                                sizeof(T) != sizeof(unsigned long long int),
-                            const T&>::type val) {
+    std::enable_if_t<sizeof(T) != sizeof(int) &&
+                         sizeof(T) != sizeof(unsigned long long int),
+                     const T&>
+        val) {
   (void)atomic_exchange(dest, val);
 }
 
@@ -187,12 +149,12 @@ __inline__ __device__ void atomic_assign(
 #if defined(KOKKOS_ENABLE_GNU_ATOMICS) || defined(KOKKOS_ENABLE_INTEL_ATOMICS)
 
 template <typename T>
-inline T atomic_exchange(volatile T* const dest,
-                         typename std::enable_if<sizeof(T) == sizeof(int) ||
-                                                     sizeof(T) == sizeof(long),
-                                                 const T&>::type val) {
-  using type =
-      typename Kokkos::Impl::if_c<sizeof(T) == sizeof(int), int, long>::type;
+inline T atomic_exchange(
+    volatile T* const dest,
+    std::enable_if_t<sizeof(T) == sizeof(int) || sizeof(T) == sizeof(long),
+                     const T&>
+        val) {
+  using type = std::conditional_t<sizeof(T) == sizeof(int), int, long>;
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
 #endif
@@ -222,8 +184,7 @@ inline T atomic_exchange(volatile T* const dest,
 template <typename T>
 inline T atomic_exchange(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) == sizeof(Impl::cas128_t), const T&>::type
-        val) {
+    std::enable_if_t<sizeof(T) == sizeof(Impl::cas128_t), const T&> val) {
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
 #endif
@@ -249,14 +210,13 @@ inline T atomic_exchange(
 //----------------------------------------------------------------------------
 
 template <typename T>
-inline T atomic_exchange(
-    volatile T* const dest,
-    typename std::enable_if<(sizeof(T) != 4) && (sizeof(T) != 8)
+inline T atomic_exchange(volatile T* const dest,
+                         std::enable_if_t<(sizeof(T) != 4) && (sizeof(T) != 8)
 #if defined(KOKKOS_ENABLE_ASM) && defined(KOKKOS_ENABLE_ISA_X86_64)
-                                && (sizeof(T) != 16)
+                                              && (sizeof(T) != 16)
 #endif
-                                ,
-                            const T>::type& val) {
+                                              ,
+                                          const T>& val) {
   while (!Impl::lock_address_host_space((void*)dest))
     ;
   Kokkos::memory_fence();
@@ -281,12 +241,12 @@ inline T atomic_exchange(
 }
 
 template <typename T>
-inline void atomic_assign(volatile T* const dest,
-                          typename std::enable_if<sizeof(T) == sizeof(int) ||
-                                                      sizeof(T) == sizeof(long),
-                                                  const T&>::type val) {
-  using type =
-      typename Kokkos::Impl::if_c<sizeof(T) == sizeof(int), int, long>::type;
+inline void atomic_assign(
+    volatile T* const dest,
+    std::enable_if_t<sizeof(T) == sizeof(int) || sizeof(T) == sizeof(long),
+                     const T&>
+        val) {
+  using type = std::conditional_t<sizeof(T) == sizeof(int), int, long>;
 
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
@@ -315,8 +275,7 @@ inline void atomic_assign(volatile T* const dest,
 template <typename T>
 inline void atomic_assign(
     volatile T* const dest,
-    typename std::enable_if<sizeof(T) == sizeof(Impl::cas128_t), const T&>::type
-        val) {
+    std::enable_if_t<sizeof(T) == sizeof(Impl::cas128_t), const T&> val) {
 #if defined(KOKKOS_ENABLE_RFO_PREFETCH)
   _mm_prefetch((const char*)dest, _MM_HINT_ET0);
 #endif
@@ -337,14 +296,13 @@ inline void atomic_assign(
 #endif
 
 template <typename T>
-inline void atomic_assign(
-    volatile T* const dest,
-    typename std::enable_if<(sizeof(T) != 4) && (sizeof(T) != 8)
+inline void atomic_assign(volatile T* const dest,
+                          std::enable_if_t<(sizeof(T) != 4) && (sizeof(T) != 8)
 #if defined(KOKKOS_ENABLE_ASM) && defined(KOKKOS_ENABLE_ISA_X86_64)
-                                && (sizeof(T) != 16)
+                                               && (sizeof(T) != 16)
 #endif
-                                ,
-                            const T>::type& val) {
+                                               ,
+                                           const T>& val) {
   while (!Impl::lock_address_host_space((void*)dest))
     ;
   Kokkos::memory_fence();
@@ -403,14 +361,14 @@ inline void atomic_assign(volatile T* const dest_v, const T val) {
 // dummy for non-CUDA Kokkos headers being processed by NVCC
 #if defined(__CUDA_ARCH__) && !defined(KOKKOS_ENABLE_CUDA)
 template <typename T>
-__inline__ __device__ T atomic_exchange(volatile T* const,
-                                        const Kokkos::Impl::identity_t<T>) {
+__inline__ __device__ T
+atomic_exchange(volatile T* const, const Kokkos::Impl::type_identity_t<T>) {
   return T();
 }
 
 template <typename T>
-__inline__ __device__ void atomic_assign(volatile T* const,
-                                         const Kokkos::Impl::identity_t<T>) {}
+__inline__ __device__ void atomic_assign(
+    volatile T* const, const Kokkos::Impl::type_identity_t<T>) {}
 #endif
 
 }  // namespace Kokkos

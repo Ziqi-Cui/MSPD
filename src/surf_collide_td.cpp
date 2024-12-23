@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -30,13 +30,15 @@
 #include "modify.h"
 #include "comm.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "math_extra.h"
 #include "error.h"
 
 using namespace SPARTA_NS;
 using namespace MathConst;
+
+enum{NUMERIC,CUSTOM,VARIABLE,VAREQUAL,VARSURF};   // surf_collide classes
 
 /* ---------------------------------------------------------------------- */
 
@@ -45,16 +47,7 @@ SurfCollideTD::SurfCollideTD(SPARTA *sparta, int narg, char **arg) :
 {
   if (narg < 3) error->all(FLERR,"Illegal surf_collide td command");
 
-  tstr = NULL;
-
-  if (strstr(arg[2],"v_") == arg[2]) {
-    int n = strlen(&arg[2][2]) + 1;
-    tstr = new char[n];
-    strcpy(tstr,&arg[2][2]);
-  } else {
-    twall = atof(arg[2]);
-    if (twall < 0.0) error->all(FLERR,"Illegal surf_collide td command");
-  }
+  parse_tsurf(arg[2]);
 
   // optional args
 
@@ -62,7 +55,13 @@ SurfCollideTD::SurfCollideTD(SPARTA *sparta, int narg, char **arg) :
 
   int iarg = 3;
   while (iarg < narg) {
-    if (strcmp(arg[iarg],"barrier") == 0) {
+    if (strcmp(arg[iarg],"temp/freq") == 0) {
+      if (iarg+2 > narg)
+        error->all(FLERR,"Illegal surf_collide td command");
+      tfreq = atoi(arg[iarg+1]);
+      if (tfreq <= 0) error->all(FLERR,"Illegal surf_collide td command");
+      iarg += 2;
+    } else if (strcmp(arg[iarg],"barrier") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal surf_collide td command");
       barrier_flag = 1;
       barrier_val = atof(arg[iarg+1]);
@@ -94,7 +93,7 @@ SurfCollideTD::SurfCollideTD(SPARTA *sparta, int narg, char **arg) :
 
   // initialize RNG
 
-  random = new RanPark(update->ranmaster->uniform());
+  random = new RanKnuth(update->ranmaster->uniform());
   double seed = update->ranmaster->uniform();
   random->reset(seed,comm->me,100);
 }
@@ -103,7 +102,6 @@ SurfCollideTD::SurfCollideTD(SPARTA *sparta, int narg, char **arg) :
 
 SurfCollideTD::~SurfCollideTD()
 {
-  delete [] tstr;
   delete random;
 }
 
@@ -112,54 +110,67 @@ SurfCollideTD::~SurfCollideTD()
 void SurfCollideTD::init()
 {
   SurfCollide::init();
-
-  // check variable
-
-  if (tstr) {
-    tvar = input->variable->find(tstr);
-    if (tvar < 0)
-      error->all(FLERR,"Surf_collide td variable name does not exist");
-    if (!input->variable->equal_style(tvar))
-      error->all(FLERR,"Surf_collide td variable is invalid style");
-  }
+  check_tsurf();
 }
 
 /* ----------------------------------------------------------------------
    particle collision with surface with optional chemistry
    ip = particle with current x = collision pt, current v = incident v
+   isurf = index of surface element
    norm = surface normal unit vector
-   ip = set to NULL if destroyed by chemsitry
+   isr = index of reaction model if >= 0, -1 for no chemistry
+   ip = reset to NULL if destroyed by chemistry
    return jp = new particle if created by chemistry
    return reaction = index of reaction (1 to N) that took place, 0 = no reaction
    resets particle(s) to post-collision outward velocity
 ------------------------------------------------------------------------- */
 
 Particle::OnePart *SurfCollideTD::
-collide(Particle::OnePart *&ip, double *norm, double &, int isr, int &reaction)
+collide(Particle::OnePart *&ip, double &,
+        int isurf, double *norm, int isr, int &reaction)
 {
   nsingle++;
 
   // if surface chemistry defined, attempt reaction
-  // reaction = 1 if reaction took place
+  // reaction = 1 to N for which reaction took place, 0 for none
+  // velreset = 1 if reaction reset post-collision velocity, else 0
 
   Particle::OnePart iorig;
   Particle::OnePart *jp = NULL;
+  reaction = 0;
+  int velreset = 0;
 
   if (isr >= 0) {
     if (modify->n_surf_react) memcpy(&iorig,ip,sizeof(Particle::OnePart));
-    reaction = surf->sr[isr]->react(ip,norm,jp);
+    reaction = surf->sr[isr]->react(ip,isurf,norm,jp,velreset);
     if (reaction) surf->nreact_one++;
   }
 
-  // td reflection for each particle
-  // if new particle J created, also need to trigger any fixes
+  // set temperature of isurf if VARSURF or CUSTOM
 
-  if (ip) td(ip,norm);
+  if (persurf_temperature) {
+    tsurf = t_persurf[isurf];
+    if (tsurf <= 0.0) error->one(FLERR,"Surf_collide tsurf <= 0.0");
+  }
+
+  // TD reflection for each particle
+  // only if SurfReact did not already reset velocities
+  // also both partiticles need to trigger any fixes
+  //   to update per-particle properties which depend on
+  //   temperature of the particle, e.g. fix vibmode and fix ambipolar
+
+  if (ip) {
+    if (!velreset) td(ip,norm);
+    if (modify->n_update_custom) {
+      int i = ip - particle->particles;
+      modify->update_custom(i,tsurf,tsurf,tsurf,vstream);
+    }
+  }
   if (jp) {
-    td(jp,norm);
-    if (modify->n_add_particle) {
+    if (!velreset) td(jp,norm);
+    if (modify->n_update_custom) {
       int j = jp - particle->particles;
-      modify->add_particle(j,twall,twall,twall,vstream);
+      modify->update_custom(j,tsurf,tsurf,tsurf,vstream);
     }
   }
 
@@ -220,7 +231,7 @@ void SurfCollideTD::td(Particle::OnePart *p, double *norm)
   double mass = species[ispecies].mass;
   double E_i = 0.5 * mass * MathExtra::lensq3(v);
 
-  double E_t = boltz*twall;
+  double E_t = boltz * tsurf;
   if (bond_flag) E_t += boltz*bond_trans;
   if (initen_flag) E_t += E_i*initen_trans;
 
@@ -240,8 +251,8 @@ void SurfCollideTD::td(Particle::OnePart *p, double *norm)
   v[1] = vperp*norm[1] + vtan1*tangent1[1] + vtan2*tangent2[1];
   v[2] = vperp*norm[2] + vtan1*tangent1[2] + vtan2*tangent2[2];
 
-  double twall_rot = twall;
-  double twall_vib = twall;
+  double twall_rot = tsurf;
+  double twall_vib = tsurf;
 
   if (bond_flag) {
     twall_rot += bond_rot;
@@ -258,10 +269,71 @@ void SurfCollideTD::td(Particle::OnePart *p, double *norm)
 }
 
 /* ----------------------------------------------------------------------
-   set current surface temperature
+   wrapper on td() method to perform collision for a single particle
+   pass in flags/coefficients to match command-line args for style td
+   flags, coeffs can be NULL
+   called by SurfReactAdsorb
 ------------------------------------------------------------------------- */
 
-void SurfCollideTD::dynamic()
+void SurfCollideTD::wrapper(Particle::OnePart *p, double *norm,
+                            int *flags, double *coeffs)
 {
-  twall = input->variable->compute_equal(tvar);
+  if (flags) {
+    tsurf = coeffs[0];
+
+    barrier_flag = flags[0];
+    initen_flag = flags[1];
+    bond_flag = flags[2];
+
+    int m = 1;
+
+    if (barrier_flag) {
+      barrier_val = coeffs[m++];
+    }
+    if (initen_flag) {
+      initen_trans = coeffs[m++];
+      initen_rot = coeffs[m++];
+      initen_vib = coeffs[m++];
+    }
+    if (bond_flag) {
+      bond_trans = coeffs[m++];
+      bond_rot = coeffs[m++];
+      bond_vib = coeffs[m++];
+    }
+  }
+
+  td(p,norm);
+}
+
+/* ----------------------------------------------------------------------
+   return flags and coeffs for this SurfCollide instance to caller
+------------------------------------------------------------------------- */
+
+void SurfCollideTD::flags_and_coeffs(int *flags, double *coeffs)
+{
+  if (tmode != NUMERIC)
+    error->all(FLERR,"Surf_collide td with non-numeric Tsurf "
+               "does not support external caller");
+
+  coeffs[0] = tsurf;
+
+  flags[0] = barrier_flag;
+  flags[1] = initen_flag;
+  flags[2] = bond_flag;
+
+  int m = 1;
+
+  if (barrier_flag) {
+    coeffs[m++] = barrier_val;
+  }
+  if (initen_flag) {
+    coeffs[m++] = initen_trans;
+    coeffs[m++] = initen_rot;
+    coeffs[m++] = initen_vib;
+  }
+  if (bond_flag) {
+    coeffs[m++] = bond_trans;
+    coeffs[m++] = bond_rot;
+    coeffs[m++] = bond_vib;
+  }
 }

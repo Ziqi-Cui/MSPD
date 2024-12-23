@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -31,8 +31,6 @@ using namespace SPARTA_NS;
 
 // customize by adding keyword
 
-enum{ID,TYPE,V1X,V1Y,V1Z,V2X,V2Y,V2Z,V3X,V3Y,V3Z,
-     COMPUTE,FIX,VARIABLE};
 enum{INT,DOUBLE,BIGINT,STRING};        // same as Dump
 
 enum{PERIODIC,OUTFLOW,REFLECT,SURFACE,AXISYM};  // same as Domain
@@ -52,6 +50,7 @@ DumpSurf::DumpSurf(SPARTA *sparta, int narg, char **arg) :
   buffer_flag = 1;
 
   dimension = domain->dimension;
+  axisymmetric = domain->axisymmetric;
 
   int igroup = surf->find_group(arg[2]);
   if (igroup < 0) error->all(FLERR,"Dump surf group ID does not exist");
@@ -77,7 +76,11 @@ DumpSurf::DumpSurf(SPARTA *sparta, int narg, char **arg) :
   field2index = new int[nfield];
   argindex = new int[nfield];
 
-  // computes, fixes, variables which the dump accesses
+  // custom props, computes, fixes, variables which the dump accesses
+
+  ncustom = 0;
+  id_custom = NULL;
+  custom = NULL;
 
   ncompute = 0;
   id_compute = NULL;
@@ -108,6 +111,10 @@ DumpSurf::DumpSurf(SPARTA *sparta, int narg, char **arg) :
   nfield -= noptional;
   size_one = nfield;
   ioptional = narg - noptional;
+
+  // max length of per-surf variable vectors
+
+  maxsurf = 0;
 
   // setup format strings
 
@@ -165,6 +172,10 @@ DumpSurf::~DumpSurf()
   delete [] field2index;
   delete [] argindex;
 
+  for (int i = 0; i < ncustom; i++) delete [] id_custom[i];
+  memory->sfree(id_custom);
+  delete [] custom;
+
   for (int i = 0; i < ncompute; i++) delete [] id_compute[i];
   memory->sfree(id_compute);
   delete [] compute;
@@ -201,6 +212,16 @@ void DumpSurf::init_style()
   else if (buffer_flag == 1) write_choice = &DumpSurf::write_string;
   else write_choice = &DumpSurf::write_text;
 
+  // check that each surf custom attribute still exists
+
+  int icustom;
+  for (int i = 0; i < ncustom; i++) {
+    icustom = surf->find_custom(id_custom[i]);
+    if (icustom < 0)
+      error->all(FLERR,"Could not find dump surf custom attribute");
+    custom[i] = icustom;
+  }
+
   // find current ptr for each compute,fix,variable
   // check that fix frequency is acceptable
 
@@ -234,13 +255,12 @@ void DumpSurf::init_style()
   if (multifile == 0) openfile();
 
   // one-time setup of lists of owned elements contributing to dump
-  // NOTE: will need to recalculate, if allow addition of surf elements
-  // nown = # of surf elements I own
-  // nchoose = # of nown surf elements in surface group
+  // nsown = # of surf elements I own
+  // nchoose = # of nsown surf elements in surface group
   // cglobal[] = global indices for nchoose elements
   //             used to access lines/tris in Surf
   // clocal[] = local indices for nchoose elements
-  //            used to access nown data from per-surf computes,fixes,variables
+  //            used to access nsown data from per-surf computes,fixes,variables
 
   if (!firstflag) return;
   firstflag = 0;
@@ -253,11 +273,11 @@ void DumpSurf::init_style()
   if (distributed && !implicit) tris = surf->mytris;
   else tris = surf->tris;
 
-  nown = surf->nown;
+  nsown = surf->nown;
   int m;
 
   nchoose = 0;
-  for (int i = 0; i < nown; i++) {
+  for (int i = 0; i < nsown; i++) {
     if (dimension == 2) {
       if (!distributed) m = me + i*nprocs;
       else m = i;
@@ -271,10 +291,10 @@ void DumpSurf::init_style()
 
   memory->create(cglobal,nchoose,"dump/surf:cglobal");
   memory->create(clocal,nchoose,"dump/surf:clocal");
-  memory->create(buflocal,nown,"dump/surf:buflocal");
+  memory->create(buflocal,nsown,"dump/surf:buflocal");
 
   nchoose = 0;
-  for (int i = 0; i < nown; i++)
+  for (int i = 0; i < nsown; i++)
     if (dimension == 2) {
       if (!distributed) m = me + i*nprocs;
       else m = i;
@@ -337,13 +357,23 @@ void DumpSurf::header_item(bigint ndump)
 
 int DumpSurf::count()
 {
+  // grow variable vbuf arrays if needed
+
+  if (surf->nown > maxsurf) {
+    maxsurf = surf->nown;
+    for (int i = 0; i < nvariable; i++) {
+      memory->destroy(vbuf[i]);
+      memory->create(vbuf[i],maxsurf,"dump:vbuf");
+    }
+  }
+
   // invoke Computes for per-surf quantities
 
   if (ncompute) {
     for (int i = 0; i < ncompute; i++)
       if (!(compute[i]->invoked_flag & INVOKED_PER_SURF)) {
-	compute[i]->compute_per_grid();
-	compute[i]->invoked_flag |= INVOKED_PER_SURF;
+        compute[i]->compute_per_grid();
+        compute[i]->invoked_flag |= INVOKED_PER_SURF;
       }
   }
 
@@ -432,7 +462,7 @@ int DumpSurf::parse_fields(int narg, char **arg)
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v1z") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump surf field for 2d simulation");
+        error->all(FLERR,"Invalid dump surf field for 2d simulation");
       pack_choice[i] = &DumpSurf::pack_v1z;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v2x") == 0) {
@@ -443,24 +473,67 @@ int DumpSurf::parse_fields(int narg, char **arg)
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v2z") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump surf field for 2d simulation");
+        error->all(FLERR,"Invalid dump surf field for 2d simulation");
       pack_choice[i] = &DumpSurf::pack_v2z;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v3x") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump surf field for 2d simulation");
+        error->all(FLERR,"Invalid dump surf field for 2d simulation");
       pack_choice[i] = &DumpSurf::pack_v3x;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v3y") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump surf field for 2d simulation");
+        error->all(FLERR,"Invalid dump surf field for 2d simulation");
       pack_choice[i] = &DumpSurf::pack_v3y;
       vtype[i] = DOUBLE;
     } else if (strcmp(arg[iarg],"v3z") == 0) {
       if (dimension == 2)
-	error->all(FLERR,"Invalid dump surf field for 2d simulation");
+        error->all(FLERR,"Invalid dump surf field for 2d simulation");
       pack_choice[i] = &DumpSurf::pack_v3z;
       vtype[i] = DOUBLE;
+    } else if (strcmp(arg[iarg],"area") == 0) {
+      pack_choice[i] = &DumpSurf::pack_area;
+      vtype[i] = DOUBLE;
+
+   // custom surf vector or array
+   // if no trailing [], then arg is set to 0, else arg is int between []
+
+    } else if (strncmp(arg[iarg],"s_",2) == 0) {
+      pack_choice[i] = &DumpSurf::pack_custom;
+
+      int n = strlen(arg[iarg]);
+      char *suffix = new char[n];
+      strcpy(suffix,&arg[iarg][2]);
+
+      char *ptr = strchr(suffix,'[');
+      if (ptr) {
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump surf command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
+      } else argindex[i] = 0;
+
+      n = surf->find_custom(suffix);
+      if (n < 0)
+        error->all(FLERR,"Could not find dump surf custom attribute");
+      if (surf->implicit)
+        error->all(FLERR,"Cannot use dump surf custom with implicit surfs");
+
+      vtype[i] = surf->etype[n];
+      if (argindex[i] == 0 && surf->esize[n] > 0)
+        error->all(FLERR,
+                   "Dump surf custom attribute does not store "
+                   "per-surf vector");
+      if (argindex[i] > 0 && surf->esize[n] == 0)
+        error->all(FLERR,
+                   "Dump surf custom attribute does not store "
+                   "per-surf array");
+      if (argindex[i] > 0 && argindex[i] > surf->esize[n])
+        error->all(FLERR,
+                   "Dump surf custom attribute is accessed out-of-range");
+
+      field2index[i] = add_custom(suffix);
+      delete [] suffix;
 
     // compute value = c_ID
     // if no trailing [], then index = 0, else index = int between []
@@ -475,10 +548,10 @@ int DumpSurf::parse_fields(int narg, char **arg)
 
       char *ptr = strchr(suffix,'[');
       if (ptr) {
-	if (suffix[strlen(suffix)-1] != ']')
-	  error->all(FLERR,"Invalid attribute in dump surf command");
-	argindex[i] = atoi(ptr+1);
-	*ptr = '\0';
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump surf command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
       } else argindex[i] = 0;
 
       n = modify->find_compute(suffix);
@@ -486,15 +559,15 @@ int DumpSurf::parse_fields(int narg, char **arg)
       if (surf->implicit)
         error->all(FLERR,"Cannot use dump surf compute with implicit surfs");
       if (modify->compute[n]->per_surf_flag == 0)
-	error->all(FLERR,"Dump surf compute does not compute per-surf info");
+        error->all(FLERR,"Dump surf compute does not compute per-surf info");
       if (argindex[i]== 0 && modify->compute[n]->size_per_surf_cols != 0)
-	error->all(FLERR,"Dump surf compute does not compute per-surf vector");
+        error->all(FLERR,"Dump surf compute does not compute per-surf vector");
       if (argindex[i] > 0 && modify->compute[n]->size_per_surf_cols == 0)
-	error->all(FLERR,
-		   "Dump surf compute does not calculate per-surf array");
+        error->all(FLERR,
+                   "Dump surf compute does not calculate per-surf array");
       if (argindex[i] > 0 &&
           argindex[i] > modify->compute[n]->size_per_surf_cols)
-	error->all(FLERR,"Dump surf compute array is accessed out-of-range");
+        error->all(FLERR,"Dump surf compute array is accessed out-of-range");
 
       field2index[i] = add_compute(suffix);
       delete [] suffix;
@@ -513,10 +586,10 @@ int DumpSurf::parse_fields(int narg, char **arg)
 
       char *ptr = strchr(suffix,'[');
       if (ptr) {
-	if (suffix[strlen(suffix)-1] != ']')
-	  error->all(FLERR,"Invalid attribute in dump surf command");
-	argindex[i] = atoi(ptr+1);
-	*ptr = '\0';
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Invalid attribute in dump surf command");
+        argindex[i] = atoi(ptr+1);
+        *ptr = '\0';
       } else argindex[i] = 0;
 
       n = modify->find_fix(suffix);
@@ -524,13 +597,13 @@ int DumpSurf::parse_fields(int narg, char **arg)
       if (surf->implicit)
         error->all(FLERR,"Cannot use dump surf fix with implicit surfs");
       if (modify->fix[n]->per_surf_flag == 0)
-	error->all(FLERR,"Dump surf fix does not compute per-surf info");
+        error->all(FLERR,"Dump surf fix does not compute per-surf info");
       if (argindex[i]== 0 && modify->fix[n]->size_per_surf_cols != 0)
-	error->all(FLERR,"Dump surf fix does not compute per-surf vector");
+        error->all(FLERR,"Dump surf fix does not compute per-surf vector");
       if (argindex[i] > 0 && modify->fix[n]->size_per_surf_cols == 0)
-	error->all(FLERR,"Dump surf fix does not compute per-surf array");
+        error->all(FLERR,"Dump surf fix does not compute per-surf array");
       if (argindex[i] > 0 && argindex[i] > modify->fix[n]->size_per_surf_cols)
-	error->all(FLERR,"Dump surf fix array is accessed out-of-range");
+        error->all(FLERR,"Dump surf fix array is accessed out-of-range");
 
       field2index[i] = add_fix(suffix);
       delete [] suffix;
@@ -549,8 +622,10 @@ int DumpSurf::parse_fields(int narg, char **arg)
 
       n = input->variable->find(suffix);
       if (n < 0) error->all(FLERR,"Could not find dump surf variable name");
+      if (surf->implicit)
+        error->all(FLERR,"Cannot use dump surf variable with implicit surfs");
       if (input->variable->surf_style(n) == 0)
-	error->all(FLERR,"Dump surf variable is not surf-style variable");
+        error->all(FLERR,"Dump surf variable is not surf-style variable");
 
       field2index[i] = add_variable(suffix);
       delete [] suffix;
@@ -559,6 +634,31 @@ int DumpSurf::parse_fields(int narg, char **arg)
   }
 
   return narg;
+}
+
+/* ----------------------------------------------------------------------
+   add Custom ID to list of surf custom attribute IDs used by dump
+   return index of where this custom attribute is in list
+   if already in list, do not add, just return index, else add to list
+------------------------------------------------------------------------- */
+
+int DumpSurf::add_custom(char *id)
+{
+  int icustom;
+  for (icustom = 0; icustom < ncustom; icustom++)
+    if (strcmp(id,id_custom[icustom]) == 0) break;
+  if (icustom < ncustom) return icustom;
+
+  id_custom = (char **)
+    memory->srealloc(id_custom,(ncustom+1)*sizeof(char *),"dump:id_custom");
+  delete [] custom;
+  custom = new int[ncustom+1];
+
+  int n = strlen(id) + 1;
+  id_custom[ncustom] = new char[n];
+  strcpy(id_custom[ncustom],id);
+  ncustom++;
+  return ncustom-1;
 }
 
 /* ----------------------------------------------------------------------
@@ -626,7 +726,7 @@ int DumpSurf::add_variable(char *id)
 
   id_variable = (char **)
     memory->srealloc(id_variable,(nvariable+1)*sizeof(char *),
-		     "dump:id_variable");
+                     "dump:id_variable");
   delete [] variable;
   variable = new int[nvariable+1];
   delete [] vbuf;
@@ -694,11 +794,50 @@ void DumpSurf::pack_variable(int n)
 {
   double *vector = vbuf[field2index[n]];
 
-  // NOTE: when add surf variables, check this logic
-
   for (int i = 0; i < nchoose; i++) {
     buf[n] = vector[clocal[i]];
     n += size_one;
+  }
+}
+
+/* ----------------------------------------------------------------------
+   extraction of custom surf attribute
+------------------------------------------------------------------------- */
+
+void DumpSurf::pack_custom(int n)
+{
+  int index = custom[field2index[n]];
+
+  if (surf->etype[index] == INT) {
+    if (surf->esize[index] == 0) {
+      int *vector = surf->eivec[surf->ewhich[index]];
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = vector[clocal[i]];
+        n += size_one;
+      }
+    } else {
+      int icol = argindex[n]-1;
+      int **array = surf->eiarray[surf->ewhich[index]];
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = array[clocal[i]][icol];
+        n += size_one;
+      }
+    }
+  } else {
+    if (surf->esize[index] == INT) {
+      double *vector = surf->edvec[surf->ewhich[index]];
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = vector[clocal[i]];
+        n += size_one;
+      }
+    } else {
+      int icol = argindex[n]-1;
+      double **array = surf->edarray[surf->ewhich[index]];
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = array[clocal[i]][icol];
+        n += size_one;
+      }
+    }
   }
 }
 
@@ -908,5 +1047,36 @@ void DumpSurf::pack_v3z(int n)
   for (int i = 0; i < nchoose; i++) {
     buf[n] = tris[cglobal[i]].p3[2];
     n += size_one;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void DumpSurf::pack_area(int n)
+{
+  if (dimension == 2) {
+    Surf::Line *lines;
+    if (distributed && !implicit) lines = surf->mylines;
+    else lines = surf->lines;
+    if (axisymmetric) {
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = surf->axi_line_size(&lines[cglobal[i]]);
+        n += size_one;
+      }
+    } else {
+      for (int i = 0; i < nchoose; i++) {
+        buf[n] = surf->line_size(&lines[cglobal[i]]);
+        n += size_one;
+      }
+    }
+  } else if (dimension == 3) {
+    double tmp;
+    Surf::Tri *tris;
+    if (distributed && !implicit) tris = surf->mytris;
+    else tris = surf->tris;
+    for (int i = 0; i < nchoose; i++) {
+      buf[n] = surf->tri_size(&tris[cglobal[i]],tmp);
+      n += size_one;
+    }
   }
 }

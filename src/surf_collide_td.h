@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -30,14 +30,12 @@ class SurfCollideTD : public SurfCollide {
   SurfCollideTD(class SPARTA *, int, char **);
   ~SurfCollideTD();
   void init();
-  Particle::OnePart *collide(Particle::OnePart *&, double *,
-                             double &, int, int &);
-
-  void dynamic();
+  Particle::OnePart *collide(Particle::OnePart *&, double &,
+                             int, double *, int, int &);
+  void wrapper(Particle::OnePart *, double *, int *, double*);
+  void flags_and_coeffs(int *, double *);
 
  private:
-  double twall;              // surface temperature
-
   double barrier_val;
   double initen_trans, initen_rot, initen_vib;
   double bond_trans, bond_rot, bond_vib;
@@ -48,11 +46,8 @@ class SurfCollideTD : public SurfCollide {
 
   int barrier_flag, initen_flag,bond_flag; // optional flags
 
-  char *tstr;                // temperature variable name (NULL if constant)
-  int tvar;                  // index of equal-style variable
-
   double vstream[3];
-  class RanPark *random;     // RNG for particle reflection
+  class RanKnuth *random;     // RNG for particle reflection
 
   void td(Particle::OnePart *, double *);
 };

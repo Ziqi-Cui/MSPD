@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -28,6 +28,72 @@ enum{XLO,XHI,YLO,YHI,ZLO,ZHI,INTERIOR};         // same as Domain
 //   to multiply 2 or 3 nx,ny,nz indices
 
 /* ----------------------------------------------------------------------
+   compute indices of child cell within parent cell that contains point X
+   lo/hi = corner points of parent cell
+   nx,ny,nz = number of child cells within parent
+   return ix,iy,iz for which child cell the point is in
+   definition of inside is >= lo boundary and < hi boundary
+   ix,iy,iz range from 0 to Nxyz-1 inclusive
+------------------------------------------------------------------------- */
+
+void Grid::id_point_child(double *x, double *lo, double *hi,
+                          int nx, int ny, int nz, int &ix, int &iy, int &iz)
+{
+  // ix,iy,iz = child cell indices within parent lo/hi cell
+  // inverse of master equation in id_child_lohi() for cell boundaries
+  // for point on or eps from cell boundary, can produce round-off error
+
+  ix = static_cast<int> ((x[0]-lo[0]) * nx/(hi[0]-lo[0]));
+  iy = static_cast<int> ((x[1]-lo[1]) * ny/(hi[1]-lo[1]));
+  iz = static_cast<int> ((x[2]-lo[2]) * nz/(hi[2]-lo[2]));
+
+  // insure indices match grid cell boundaries in case of round-off error
+  // via master equation id_child_lohi() that defines cell boundaries
+
+  double edge;
+
+  edge = lo[0] + ix*(hi[0]-lo[0])/nx;
+  if (x[0] < edge) ix--;
+  edge = lo[0] + (ix+1)*(hi[0]-lo[0])/nx;
+  if (x[0] >= edge) ix++;
+
+  edge = lo[1] + iy*(hi[1]-lo[1])/ny;
+  if (x[1] < edge) iy--;
+  edge = lo[1] + (iy+1)*(hi[1]-lo[1])/ny;
+  if (x[1] >= edge) iy++;
+
+  edge = lo[2] + iz*(hi[2]-lo[2])/nz;
+  if (x[2] < edge) iz--;
+  edge = lo[2] + (iz+1)*(hi[2]-lo[2])/nz;
+  if (x[2] >= edge) iz++;
+
+  // insure indices range from 0 to Nxyz-1 inclusive
+
+  ix = MAX(ix,0);
+  ix = MIN(ix,nx-1);
+  iy = MAX(iy,0);
+  iy = MIN(iy,ny-1);
+  iz = MAX(iz,0);
+  iz = MIN(iz,nz-1);
+}
+
+/* ----------------------------------------------------------------------
+   calculate parentID of a childID at level
+   return parentID
+------------------------------------------------------------------------- */
+
+cellint Grid::id_parent_of_child(cellint childID, int level)
+{
+  // mask = all 1s for parent bits of ID
+
+  int parentbits = plevels[level-1].nbits;
+  cellint mask = (1L << parentbits) - 1;
+  cellint parentID = childID & mask;
+
+  return parentID;
+}
+
+/* ----------------------------------------------------------------------
    find child cell within parentID which contains point X
    level = level of parent cell
    oplo/ophi = original parent cell corner pts
@@ -38,7 +104,7 @@ enum{XLO,XHI,YLO,YHI,ZLO,ZHI,INTERIOR};         // same as Domain
 ------------------------------------------------------------------------- */
 
 int Grid::id_find_child(cellint parentID, int plevel,
-			double *oplo, double *ophi, double *x)
+                        double *oplo, double *ophi, double *x)
 {
   int ix,iy,iz,nx,ny,nz;
   double plo[3],phi[3],clo[3],chi[3];
@@ -53,13 +119,8 @@ int Grid::id_find_child(cellint parentID, int plevel,
     nx = plevels[level].nx;
     ny = plevels[level].ny;
     nz = plevels[level].nz;
-    ix = static_cast<int> ((x[0]-lo[0]) * nx/(hi[0]-lo[0]));
-    iy = static_cast<int> ((x[1]-lo[1]) * ny/(hi[1]-lo[1]));
-    iz = static_cast<int> ((x[2]-lo[2]) * nz/(hi[2]-lo[2]));
-    if (ix == nx) ix--;
-    if (iy == ny) iy--;
-    if (iz == nz) iz--;
 
+    id_point_child(x,lo,hi,nx,ny,nz,ix,iy,iz);
     ichild = (cellint) iz*nx*ny + (cellint) iy*nx + ix + 1;
     childID = (ichild << plevels[level].nbits) | id;
 
@@ -129,8 +190,8 @@ cellint Grid::id_uniform_level(int level, int xgrid, int ygrid, int zgrid)
 ------------------------------------------------------------------------- */
 
 void Grid::id_find_child_uniform_level(int level, int lohi,
-				       double *boxlo, double *boxhi, double *x,
-				       int &xgrid, int &ygrid, int &zgrid)
+                                       double *boxlo, double *boxhi, double *x,
+                                       int &xgrid, int &ygrid, int &zgrid)
 {
   int ix,iy,iz,nx,ny,nz;
   double plo[3],phi[3],clo[3],chi[3];
@@ -146,12 +207,8 @@ void Grid::id_find_child_uniform_level(int level, int lohi,
     nx = plevels[plevel].nx;
     ny = plevels[plevel].ny;
     nz = plevels[plevel].nz;
-    ix = static_cast<int> ((x[0]-lo[0]) * nx/(hi[0]-lo[0]));
-    iy = static_cast<int> ((x[1]-lo[1]) * ny/(hi[1]-lo[1]));
-    iz = static_cast<int> ((x[2]-lo[2]) * nz/(hi[2]-lo[2]));
-    if (ix == nx) ix--;
-    if (iy == ny) iy--;
-    if (iz == nz) iz--;
+
+    id_point_child(x,lo,hi,nx,ny,nz,ix,iy,iz);
 
     xgrid = nx*xgrid + ix;
     ygrid = ny*ygrid + iy;
@@ -168,19 +225,14 @@ void Grid::id_find_child_uniform_level(int level, int lohi,
     plevel++;
   }
 
-  // at this stage, indices match pt >= lower edge and < upper edge
-  // if pt = either edge, account for lohi flag by
-  //  decrement or increment of index
-  // but 0 <= index <= N-1 is still required
+  // x >= lower edge and < upper edge of lo/hi cell with indices ix,iy,iz
+  // if lohi = 0 and pt is on lower edge, decrement index
+  // still require 0 <= index <= N-1
 
   if (lohi == 0) {
-    if (x[0] == lo[0] && x[0] != boxlo[0]) xgrid--;
-    if (x[1] == lo[1] && x[1] != boxlo[1]) ygrid--;
-    if (x[2] == lo[2] && x[2] != boxlo[2]) zgrid--;
-  } else {
-    if (x[0] == hi[0] && x[0] != boxhi[0]) xgrid++;
-    if (x[1] == hi[1] && x[1] != boxhi[1]) ygrid++;
-    if (x[2] == hi[2] && x[2] != boxhi[2]) zgrid++;
+    if (x[0] == lo[0] && ix != 0) xgrid--;
+    if (x[1] == lo[1] && iy != 0) ygrid--;
+    if (x[2] == lo[2] && iz != 0) zgrid--;
   }
 }
 
@@ -371,13 +423,10 @@ cellint Grid::id_ichild(cellint childID, cellint parentID, int plevel)
 int Grid::id_level(cellint id)
 {
   int newbits;
-  cellint mask,ichild;
 
   int level = 0;
   while (level < maxlevel) {
     newbits = plevels[level].newbits;
-    mask = (1L << newbits) - 1;
-    ichild = id & mask;
     id = id >> newbits;
     if (!id) break;
     level++;
@@ -395,7 +444,7 @@ int Grid::id_level(cellint id)
 ------------------------------------------------------------------------- */
 
 void Grid::id_child_lohi(int plevel, double *plo, double *phi,
-			 cellint ichild, double *clo, double *chi)
+                         cellint ichild, double *clo, double *chi)
 {
   int nx = plevels[plevel].nx;
   int ny = plevels[plevel].ny;
@@ -426,7 +475,7 @@ void Grid::id_child_lohi(int plevel, double *plo, double *phi,
 ------------------------------------------------------------------------- */
 
 void Grid::id_lohi(cellint id, int level, double *boxlo, double *boxhi,
-		   double *lo, double *hi)
+                   double *lo, double *hi)
 {
   int childbits;
   cellint ichild,mask;
@@ -492,7 +541,7 @@ void Grid::id_num2str(cellint id, char *str)
     newbits = plevels[level].newbits;
     mask = (1L << newbits) - 1;
     ichild = id & mask;
-    sprintf(&str[offset],"%d",ichild);
+    sprintf(&str[offset],CELLINT_FORMAT,ichild);
     offset = strlen(str);
     id = id >> newbits;
     if (!id) return;

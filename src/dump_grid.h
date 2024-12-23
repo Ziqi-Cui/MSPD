@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -56,10 +56,14 @@ class DumpGrid : public Dump {
   char **id_variable;        // their names
   int *variable;             // list of indices for the Variables
   double **vbuf;             // local storage for variable evaluation
+  int maxgrid;               // max length of per-grid variable vectors
+
+  int ncustom;               // # of grid Custom attributes used by dump
+  char **id_custom;          // their IDs
+  int *custom;               // list of indices for the Custom attributes
 
   int *cpart;                // indices into grid->cells for cells with particles
   int ncpart;                // # of owned grid cells with particles
-  int maxgrid;               // max length of per-grid variable vectors
 
   int dimension;
 
@@ -70,6 +74,7 @@ class DumpGrid : public Dump {
   void write_data(int, double *);
 
   int parse_fields(int, char **);
+  int add_custom(char *);
   int add_compute(char *);
   int add_fix(char *);
   int add_variable(char *);
@@ -94,8 +99,10 @@ class DumpGrid : public Dump {
   void pack_compute(int);
   void pack_fix(int);
   void pack_variable(int);
+  void pack_custom(int);
 
   void pack_id(int);
+  void pack_split(int);
   void pack_proc(int);
 
   void pack_xlo(int);

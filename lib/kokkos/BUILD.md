@@ -27,7 +27,7 @@ When configuring your project just set:
   -DKokkos_ROOT=${kokkos_install_prefix} \
   -DCMAKE_CXX_COMPILER=${compiler_used_to_build_kokkos}
 ````
-Note: You may need the following if using some versions of CMake (e.g. 3.12):
+Note: You may need the following if your project requires a minimum CMake version older than 3.12:
 ````cmake
 cmake_policy(SET CMP0074 NEW)
 ````
@@ -52,6 +52,10 @@ There are numerous device backends, options, and architecture-specific optimizat
 ````
 which activates the OpenMP backend. All of the options controlling device backends, options, architectures, and third-party libraries (TPLs) are given below.
 
+Kokkos requires as a minimum C++17, however C++20 and C++23 are supported depending on the compiler.
+
+The latest minimum compiler versions can be found in `cmake/kokkos_compiler_id.cmake`.
+
 ## Known Issues<a name="KnownIssues"></a>
 
 ### Cray
@@ -65,10 +69,15 @@ which activates the OpenMP backend. All of the options controlling device backen
 
 ## Spack
 An alternative to manually building with the CMake is to use the Spack package manager.
-To do so, download the `kokkos-spack` git repo and add to the package list:
+Make sure you have downloaded [Spack](https://github.com/spack/spack).
+The easiest way to configure the Spack environment is:
 ````bash
-> spack repo add $path-to-kokkos-spack
+> source spack/share/spack/setup-env.sh
 ````
+with other scripts available for other shells.
+You can display information about how to install packages with:
+````bash
+> spack info kokkos
 A basic installation would be done as:
 ````bash
 > spack install kokkos
@@ -114,8 +123,8 @@ Device backends can be enabled by specifying `-DKokkos_ENABLE_X`.
 * Kokkos_ENABLE_OPENMP
     * Whether to build OpenMP backend
     * BOOL Default: OFF
-* Kokkos_ENABLE_PTHREAD
-    * Whether to build Pthread backend
+* Kokkos_ENABLE_THREADS
+    * Whether to build C++ thread backend
     * BOOL Default: OFF
 * Kokkos_ENABLE_SERIAL
     * Whether to build serial backend
@@ -143,12 +152,14 @@ Options can be enabled by specifying `-DKokkos_ENABLE_X`.
     * Whether to activate experimental lambda features
     * BOOL Default: OFF
 * Kokkos_ENABLE_CUDA_LDG_INTRINSIC
+    * Deprecated since 4.0, LDG intrinsics are always enabled.
     * Whether to use CUDA LDG intrinsics
     * BOOL Default: OFF
 * Kokkos_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE
     * Whether to enable relocatable device code (RDC) for CUDA
     * BOOL Default: OFF
 * Kokkos_ENABLE_CUDA_UVM
+    * Deprecated since 4.0
     * Whether to use unified memory (UM) by default for CUDA
     * BOOL Default: OFF
 * Kokkos_ENABLE_DEBUG
@@ -166,6 +177,9 @@ Options can be enabled by specifying `-DKokkos_ENABLE_X`.
 * Kokkos_ENABLE_HPX_ASYNC_DISPATCH
     * Whether HPX supports asynchronous dispatch
     * BOOL Default: OFF
+* Kokkos_ENABLE_IMPL_CUDA_MALLOC_ASYNC
+    * Whether to enable CudaMallocAsync (requires CUDA Toolkit 11.2). This is an experimental performance feature and currently has issue when using with UCX. See https://github.com/kokkos/kokkos/issues/4228 for more details.
+    * BOOL Default: OFF
 * Kokkos_ENABLE_LARGE_MEM_TESTS
     * Whether to perform extra large memory tests
     * BOOL_Default: OFF
@@ -173,13 +187,9 @@ Options can be enabled by specifying `-DKokkos_ENABLE_X`.
     * Whether to print information about which profiling tools gotloaded
     * BOOL Default: OFF
 * Kokkos_ENABLE_TESTS
-    * Whether to build serial  backend
+    * Whether to enable test suite
     * BOOL Default: OFF
 
-## Other Options
-* Kokkos_CXX_STANDARD
-    * The C++ standard for Kokkos to use: c++11, c++14, c++17, or c++20. This should be given in CMake style as 11, 14, 17, or 20.
-    * STRING Default: 11
 
 ## Third-party Libraries (TPLs)
 The following options control enabling TPLs:
@@ -230,6 +240,9 @@ The following options control `find_package` paths for CMake-based TPLs:
 ## Architecture Keywords
 Architecture-specific optimizations can be enabled by specifying `-DKokkos_ARCH_X`.
 
+* Kokkos_ARCH_NATIVE
+    * Whether to optimize for the the local CPU architecture
+    * BOOL Default: OFF
 * Kokkos_ARCH_AMDAVX
     * Whether to optimize for the AMDAVX architecture
     * BOOL Default: OFF
@@ -256,6 +269,9 @@ Architecture-specific optimizations can be enabled by specifying `-DKokkos_ARCH_
     * BOOL Default: OFF
 * Kokkos_ARCH_ZEN2
     * Whether to optimize for the Zen2 architecture
+    * BOOL Default: OFF
+* Kokkos_ARCH_ZEN3
+    * Whether to optimize for the Zen3 architecture
     * BOOL Default: OFF
 * Kokkos_ARCH_HSW
     * Whether to optimize for the HSW architecture
@@ -302,11 +318,23 @@ Architecture-specific optimizations can be enabled by specifying `-DKokkos_ARCH_
 * Kokkos_ARCH_POWER9
     * Whether to optimize for the POWER9 architecture
     * BOOL Default: OFF
+* Kokkos_ARCH_ICL
+    * Whether to optimize for the ICL architecture
+    * BOOL Default: OFF
+* Kokkos_ARCH_ICX
+    * Whether to optimize for the ICX architecture
+    * BOOL Default: OFF
+* Kokkos_ARCH_SKL
+    * Whether to optimize for the SKL architecture
+    * BOOL Default: OFF
 * Kokkos_ARCH_SKX
     * Whether to optimize for the SKX architecture
     * BOOL Default: OFF
 * Kokkos_ARCH_SNB
     * Whether to optimize for the SNB architecture
+    * BOOL Default: OFF
+* Kokkos_ARCH_SPR
+    * Whether to optimize for the SPR architecture
     * BOOL Default: OFF
 * Kokkos_ARCH_TURING75
     * Whether to optimize for the TURING75 architecture

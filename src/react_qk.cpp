@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -19,7 +19,7 @@
 #include "update.h"
 #include "particle.h"
 #include "collide.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "error.h"
 
@@ -48,13 +48,17 @@ void ReactQK::init()
     if (rlist[i].active && rlist[i].type == RECOMBINATION)
       error->all(FLERR,
                  "React qk does not currently support recombination reactions");
+
+  if (computeChemRates)
+    error->all(FLERR,
+               "React qk does not currently support the 'react_modify compute_chem_rates' option");
 }
 
 /* ---------------------------------------------------------------------- */
 
 int ReactQK::attempt(Particle::OnePart *ip, Particle::OnePart *jp,
                      double pre_etrans, double pre_erot, double pre_evib,
-                     double &post_etotal, int &kspecies)
+                     double &post_etotal, int &kspecies, double Ttran)
 {
   double pre_etotal,ecc,e_excess;
   double prob,evib,inverse_kT;

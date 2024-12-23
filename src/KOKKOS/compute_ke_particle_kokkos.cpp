@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -62,12 +62,12 @@ void ComputeKEParticleKokkos::compute_per_particle()
 
 void ComputeKEParticleKokkos::compute_per_particle_kokkos()
 {
-  // grow ke array (d_vector) if necessary
+  // grow ke array (d_vector_particle) if necessary
   if (particle->nlocal > nmax) {
     memoryKK->destroy_kokkos(k_vector_particle,vector_particle);
     nmax = particle->maxlocal;
     memoryKK->create_kokkos(k_vector_particle,vector_particle,nmax,"ke/particle:vector_particle");
-    d_vector = k_vector_particle.d_view;
+    d_vector_particle = k_vector_particle.d_view;
   }
 
   ParticleKokkos* particle_kk = (ParticleKokkos*) particle;
@@ -79,7 +79,6 @@ void ComputeKEParticleKokkos::compute_per_particle_kokkos()
   // compute kinetic energy for each atom in group
   copymode = 1;
   Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType>(0,nlocal),*this);
-  DeviceType().fence();
   copymode = 0;
 
   d_particles = t_particle_1d(); // destroy reference to reduce memory use
@@ -91,5 +90,5 @@ void ComputeKEParticleKokkos::operator()(const int &i) const {
   const double mass = d_species[ispecies].mass;
   const double mvv2e = update->mvv2e;
   double *v = d_particles[i].v;
-  d_vector[i] = 0.5 * mvv2e * mass * (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+  d_vector_particle[i] = 0.5 * mvv2e * mass * (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
 }

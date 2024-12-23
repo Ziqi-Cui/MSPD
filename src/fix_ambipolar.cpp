@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -20,7 +20,7 @@
 #include "particle.h"
 #include "comm.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "memory.h"
 #include "error.h"
@@ -37,7 +37,7 @@ FixAmbipolar::FixAmbipolar(SPARTA *sparta, int narg, char **arg) :
 {
   if (narg < 4) error->all(FLERR,"Illegal fix ambipolar command");
 
-  flag_add_particle = 1;
+  flag_update_custom = 1;
   flag_surf_react = 1;
 
   especies = particle->find_species(arg[2]);
@@ -62,20 +62,34 @@ FixAmbipolar::FixAmbipolar(SPARTA *sparta, int narg, char **arg) :
 
   // random = RNG for electron velocity creation
 
-  random = new RanPark(update->ranmaster->uniform());
+  random = new RanKnuth(update->ranmaster->uniform());
   double seed = update->ranmaster->uniform();
   random->reset(seed,comm->me,100);
 
-  // create per-particle vector and array
+  // check if 2 custom attributes already exist, due to restart file
+  // else create per-particle vector and array
+  // error if one exists and other doesn't
 
-  ionindex = particle->add_custom((char *) "ionambi",INT,0);
-  velindex = particle->add_custom((char *) "velambi",DOUBLE,3);
+  ionindex = particle->find_custom((char *) "ionambi");
+  velindex = particle->find_custom((char *) "velambi");
+
+  int flag = 0;
+  if (ionindex < 0 && velindex >= 0) flag = 1;
+  if (ionindex >= 0 && velindex < 0) flag = 1;
+  if (flag) error->all(FLERR,"Fix ambipolar custom attribute already exists");
+
+  if (ionindex < 0)
+    ionindex = particle->add_custom((char *) "ionambi",INT,0);
+  if (velindex < 0)
+    velindex = particle->add_custom((char *) "velambi",DOUBLE,3);
 }
 
 /* ---------------------------------------------------------------------- */
 
 FixAmbipolar::~FixAmbipolar()
 {
+  if (copy || copymode) return;
+
   memory->destroy(ions);
   delete random;
   particle->remove_custom(ionindex);
@@ -101,11 +115,12 @@ void FixAmbipolar::init()
 
 /* ----------------------------------------------------------------------
    called when a particle with index is created
+    or when temperature dependent properties need to be updated
    creation used temp_thermal and vstream to set particle velocity
    if an ion, set ionambi and velambi for particle
 ------------------------------------------------------------------------- */
 
-void FixAmbipolar::add_particle(int index, double temp_thermal,
+void FixAmbipolar::update_custom(int index, double temp_thermal,
                                 double, double,
                                 double *vstream)
 {
@@ -175,7 +190,7 @@ void FixAmbipolar::surf_react(Particle::OnePart *iorig, int &i, int &j)
     Particle::OnePart *particles = particle->particles;
     if (ions[particles[i].ispecies] == 0) return;
     if (particles[j].ispecies != especies) return;
-    add_particle(i,update->temp_thermal,update->temp_thermal,
+    update_custom(i,update->temp_thermal,update->temp_thermal,
                  update->temp_thermal,update->vstream);
     j = -1;
   }

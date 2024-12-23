@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -241,18 +241,18 @@ void Stats::compute(int flag)
   for (i = 0; i < ncompute; i++)
     if (compute_which[i] == SCALAR) {
       if (!(computes[i]->invoked_flag & INVOKED_SCALAR)) {
-	computes[i]->compute_scalar();
-	computes[i]->invoked_flag |= INVOKED_SCALAR;
+        computes[i]->compute_scalar();
+        computes[i]->invoked_flag |= INVOKED_SCALAR;
       }
     } else if (compute_which[i] == VECTOR) {
       if (!(computes[i]->invoked_flag & INVOKED_VECTOR)) {
-	computes[i]->compute_vector();
-	computes[i]->invoked_flag |= INVOKED_VECTOR;
+        computes[i]->compute_vector();
+        computes[i]->invoked_flag |= INVOKED_VECTOR;
       }
     } else if (compute_which[i] == ARRAY) {
       if (!(computes[i]->invoked_flag & INVOKED_ARRAY)) {
-	computes[i]->compute_array();
-	computes[i]->invoked_flag |= INVOKED_ARRAY;
+        computes[i]->compute_array();
+        computes[i]->invoked_flag |= INVOKED_ARRAY;
       }
     }
 
@@ -294,10 +294,10 @@ void Stats::modify_params(int narg, char **arg)
     if (strcmp(arg[iarg],"every") == 0) {
       if (iarg+2 > narg) error->all(FLERR,"Illegal stats_modify command");
       if (strstr(arg[iarg+1],"v_") == arg[iarg+1]) {
-	delete [] output->var_stats;
-	int n = strlen(&arg[iarg+1][2]) + 1;
-	output->var_stats = new char[n];
-	strcpy(output->var_stats,&arg[iarg+1][2]);
+        delete [] output->var_stats;
+        int n = strlen(&arg[iarg+1][2]) + 1;
+        output->var_stats = new char[n];
+        strcpy(output->var_stats,&arg[iarg+1][2]);
       } else error->all(FLERR,"Illegal stats_modify command");
       output->stats_every = 0;
       iarg += 2;
@@ -497,8 +497,6 @@ void Stats::set_fields(int narg, char **arg)
       addfield("Elapsed",&Stats::compute_elapsed,BIGINT);
     } else if (strcmp(arg[i],"elaplong") == 0) {
       addfield("Elapsed",&Stats::compute_elaplong,BIGINT);
-    } else if (strcmp(arg[i],"dt") == 0) {
-      addfield("Dt",&Stats::compute_dt,FLOAT);
     } else if (strcmp(arg[i],"cpu") == 0) {
       addfield("CPU",&Stats::compute_cpu,FLOAT);
     } else if (strcmp(arg[i],"tpcpu") == 0) {
@@ -507,7 +505,10 @@ void Stats::set_fields(int narg, char **arg)
       addfield("S/CPU",&Stats::compute_spcpu,FLOAT);
     } else if (strcmp(arg[i],"wall") == 0) {
       addfield("WALL",&Stats::compute_wall,FLOAT);
-
+    } else if (strcmp(arg[i],"dt") == 0) {
+      addfield("Dt",&Stats::compute_dt,FLOAT);
+    } else if (strcmp(arg[i],"time") == 0) {
+      addfield("Time",&Stats::compute_time,FLOAT);
     } else if (strcmp(arg[i],"np") == 0) {
       addfield("Np",&Stats::compute_np,BIGINT);
     } else if (strcmp(arg[i],"ntouch") == 0) {
@@ -599,57 +600,61 @@ void Stats::set_fields(int narg, char **arg)
     } else if (strcmp(arg[i], "warningInter") == 0) {
     addfield("warningInter", &Stats::compute_interWarningfrac, FLOAT);    
     // surf collide value = s_ID, surf react value = r_ID
+    // surf collide value = sc_ID, surf react value = sr_ID
     // count trailing [] and store int arguments
     // copy = at most 8 chars of ID to pass to addfield
 
-    } else if ((strncmp(arg[i],"s_",2) == 0) ||
-	       (strncmp(arg[i],"r_",2) == 0)) {
+    } else if ((strncmp(arg[i],"sc_",3) == 0) ||
+               (strncmp(arg[i],"sr_",3) == 0)) {
 
       int n = strlen(arg[i]);
       char *id = new char[n];
-      strcpy(id,&arg[i][2]);
+      strcpy(id,&arg[i][3]);
 
       // parse zero or one or two trailing brackets from ID
       // argindex1,argindex2 = int inside each bracket pair, 0 if no bracket
+      // error check for one bracket, not zero or two
 
       char *ptr = strchr(id,'[');
       if (ptr == NULL) argindex1[nfield] = 0;
       else {
-	*ptr = '\0';
-	argindex1[nfield] = input->variable->int_between_brackets(ptr,0);
-	ptr++;
-	if (*ptr == '[') {
-	  argindex2[nfield] = input->variable->int_between_brackets(ptr,0);
-	  ptr++;
-	} else argindex2[nfield] = 0;
+        *ptr = '\0';
+        argindex1[nfield] =
+          input->variable->int_between_brackets(ptr,0,"stats_style");
+        ptr++;
+        if (*ptr == '[') {
+          argindex2[nfield] =
+            input->variable->int_between_brackets(ptr,0,"stats_style");
+          ptr++;
+        } else argindex2[nfield] = 0;
       }
 
-      if (arg[i][0] == 's') {
-	n = surf->find_collide(id);
-	if (n < 0) error->all(FLERR,"Could not find stats surf collide ID");
-	if (argindex1[nfield] == 0 || argindex2[nfield] > 0)
-	  error->all(FLERR,"Stats surf collide is not indexed correctly");
-	if (surf->sc[n]->vector_flag == 0)
-	  error->all(FLERR,"Stats surf collide does not compute vector");
-	if (argindex1[nfield] > surf->sc[n]->size_vector)
-	  error->all(FLERR,"Stats surf collide vector "
+      if (arg[i][1] == 'c') {
+        n = surf->find_collide(id);
+        if (n < 0) error->all(FLERR,"Could not find stats surf collide ID");
+        if (argindex1[nfield] == 0 || argindex2[nfield] > 0)
+          error->all(FLERR,"Stats surf collide is not indexed correctly");
+        if (surf->sc[n]->vector_flag == 0)
+          error->all(FLERR,"Stats surf collide does not compute vector");
+        if (argindex1[nfield] > surf->sc[n]->size_vector)
+          error->all(FLERR,"Stats surf collide vector "
                      "is accessed out-of-range");
 
-	field2index[nfield] = add_surf_collide(id);
-	addfield(arg[i],&Stats::compute_surf_collide,FLOAT);
-	
-      } else if (arg[i][0] == 'r') {
-	n = surf->find_react(id);
-	if (n < 0) error->all(FLERR,"Could not find stats surf react ID");
-	if (argindex1[nfield] == 0 || argindex2[nfield] > 0)
-	  error->all(FLERR,"Stats surf react is not indexed correctly");
-	if (surf->sr[n]->vector_flag == 0)
-	  error->all(FLERR,"Stats surf react does not compute vector");
-	if (argindex1[nfield] > surf->sr[n]->size_vector)
-	  error->all(FLERR,"Stats surf react vector is accessed out-of-range");
+        field2index[nfield] = add_surf_collide(id);
+        addfield(arg[i],&Stats::compute_surf_collide,FLOAT);
 
-	field2index[nfield] = add_surf_react(id);
-	addfield(arg[i],&Stats::compute_surf_react,FLOAT);
+      } else if (arg[i][1] == 'r') {
+        n = surf->find_react(id);
+        if (n < 0) error->all(FLERR,"Could not find stats surf react ID");
+        if (argindex1[nfield] == 0 || argindex2[nfield] > 0)
+          error->all(FLERR,"Stats surf react is not indexed correctly");
+        if (surf->sr[n]->vector_flag == 0)
+          error->all(FLERR,"Stats surf react does not compute vector");
+        if (argindex1[nfield] > surf->sr[n]->size_vector)
+          error->all(FLERR,"Stats surf react vector is accessed out-of-range");
+
+        field2index[nfield] = add_surf_react(id);
+        addfield(arg[i],&Stats::compute_surf_react,FLOAT);
       }
 
       delete [] id;
@@ -659,8 +664,8 @@ void Stats::set_fields(int narg, char **arg)
     // copy = at most 8 chars of ID to pass to addfield
 
     } else if ((strncmp(arg[i],"c_",2) == 0) ||
-	       (strncmp(arg[i],"f_",2) == 0) ||
-	       (strncmp(arg[i],"v_",2) == 0)) {
+               (strncmp(arg[i],"f_",2) == 0) ||
+               (strncmp(arg[i],"v_",2) == 0)) {
 
       int n = strlen(arg[i]);
       char *id = new char[n];
@@ -672,74 +677,76 @@ void Stats::set_fields(int narg, char **arg)
       char *ptr = strchr(id,'[');
       if (ptr == NULL) argindex1[nfield] = 0;
       else {
-	*ptr = '\0';
-	argindex1[nfield] = input->variable->int_between_brackets(ptr,0);
-	ptr++;
-	if (*ptr == '[') {
-	  argindex2[nfield] = input->variable->int_between_brackets(ptr,0);
-	  ptr++;
-	} else argindex2[nfield] = 0;
+        *ptr = '\0';
+        argindex1[nfield] =
+          input->variable->int_between_brackets(ptr,0,"stats_style");
+        ptr++;
+        if (*ptr == '[') {
+          argindex2[nfield] =
+            input->variable->int_between_brackets(ptr,0,"stats_style");
+          ptr++;
+        } else argindex2[nfield] = 0;
       }
 
       if (arg[i][0] == 'c') {
-	n = modify->find_compute(id);
-	if (n < 0) error->all(FLERR,"Could not find stats compute ID");
-	if (argindex1[nfield] == 0 && modify->compute[n]->scalar_flag == 0)
-	  error->all(FLERR,"Stats compute does not compute scalar");
-	if (argindex1[nfield] > 0 && argindex2[nfield] == 0) {
-	  if (modify->compute[n]->vector_flag == 0)
-	    error->all(FLERR,"Stats compute does not compute vector");
-	  if (argindex1[nfield] > modify->compute[n]->size_vector)
-	    error->all(FLERR,"Stats compute vector is accessed out-of-range");
-	}
-	if (argindex1[nfield] > 0 && argindex2[nfield] > 0) {
-	  if (modify->compute[n]->array_flag == 0)
-	    error->all(FLERR,"Stats compute does not compute array");
-	  if (argindex1[nfield] > modify->compute[n]->size_array_rows ||
-	      argindex2[nfield] > modify->compute[n]->size_array_cols)
-	    error->all(FLERR,"Stats compute array is accessed out-of-range");
-	}
+        n = modify->find_compute(id);
+        if (n < 0) error->all(FLERR,"Could not find stats compute ID");
+        if (argindex1[nfield] == 0 && modify->compute[n]->scalar_flag == 0)
+          error->all(FLERR,"Stats compute does not compute scalar");
+        if (argindex1[nfield] > 0 && argindex2[nfield] == 0) {
+          if (modify->compute[n]->vector_flag == 0)
+            error->all(FLERR,"Stats compute does not compute vector");
+          if (argindex1[nfield] > modify->compute[n]->size_vector)
+            error->all(FLERR,"Stats compute vector is accessed out-of-range");
+        }
+        if (argindex1[nfield] > 0 && argindex2[nfield] > 0) {
+          if (modify->compute[n]->array_flag == 0)
+            error->all(FLERR,"Stats compute does not compute array");
+          if (argindex1[nfield] > modify->compute[n]->size_array_rows ||
+              argindex2[nfield] > modify->compute[n]->size_array_cols)
+            error->all(FLERR,"Stats compute array is accessed out-of-range");
+        }
 
-	if (argindex1[nfield] == 0)
-	  field2index[nfield] = add_compute(id,SCALAR);
-	else if (argindex2[nfield] == 0)
-	  field2index[nfield] = add_compute(id,VECTOR);
-	else
-	  field2index[nfield] = add_compute(id,ARRAY);
-	addfield(arg[i],&Stats::compute_compute,FLOAT);
+        if (argindex1[nfield] == 0)
+          field2index[nfield] = add_compute(id,SCALAR);
+        else if (argindex2[nfield] == 0)
+          field2index[nfield] = add_compute(id,VECTOR);
+        else
+          field2index[nfield] = add_compute(id,ARRAY);
+        addfield(arg[i],&Stats::compute_compute,FLOAT);
 
       } else if (arg[i][0] == 'f') {
-	n = modify->find_fix(id);
-	if (n < 0) error->all(FLERR,"Could not find stats fix ID");
-	if (argindex1[nfield] == 0 && modify->fix[n]->scalar_flag == 0)
-	  error->all(FLERR,"Stats fix does not compute scalar");
-	if (argindex1[nfield] > 0 && argindex2[nfield] == 0) {
-	  if (modify->fix[n]->vector_flag == 0)
-	    error->all(FLERR,"Stats fix does not compute vector");
-	  if (argindex1[nfield] > modify->fix[n]->size_vector)
-	    error->all(FLERR,"Stats fix vector is accessed out-of-range");
-	}
-	if (argindex1[nfield] > 0 && argindex2[nfield] > 0) {
-	  if (modify->fix[n]->array_flag == 0)
-	    error->all(FLERR,"Stats fix does not compute array");
-	  if (argindex1[nfield] > modify->fix[n]->size_array_rows ||
-	      argindex2[nfield] > modify->fix[n]->size_array_cols)
-	    error->all(FLERR,"Stats fix array is accessed out-of-range");
-	}
+        n = modify->find_fix(id);
+        if (n < 0) error->all(FLERR,"Could not find stats fix ID");
+        if (argindex1[nfield] == 0 && modify->fix[n]->scalar_flag == 0)
+          error->all(FLERR,"Stats fix does not compute scalar");
+        if (argindex1[nfield] > 0 && argindex2[nfield] == 0) {
+          if (modify->fix[n]->vector_flag == 0)
+            error->all(FLERR,"Stats fix does not compute vector");
+          if (argindex1[nfield] > modify->fix[n]->size_vector)
+            error->all(FLERR,"Stats fix vector is accessed out-of-range");
+        }
+        if (argindex1[nfield] > 0 && argindex2[nfield] > 0) {
+          if (modify->fix[n]->array_flag == 0)
+            error->all(FLERR,"Stats fix does not compute array");
+          if (argindex1[nfield] > modify->fix[n]->size_array_rows ||
+              argindex2[nfield] > modify->fix[n]->size_array_cols)
+            error->all(FLERR,"Stats fix array is accessed out-of-range");
+        }
 
-	field2index[nfield] = add_fix(id);
-	addfield(arg[i],&Stats::compute_fix,FLOAT);
+        field2index[nfield] = add_fix(id);
+        addfield(arg[i],&Stats::compute_fix,FLOAT);
 
       } else if (arg[i][0] == 'v') {
-	n = input->variable->find(id);
-	if (n < 0) error->all(FLERR,"Could not find stats variable name");
-	if (input->variable->equal_style(n) == 0)
-	  error->all(FLERR,"Stats variable is not equal-style variable");
-	if (argindex1[nfield])
-	  error->all(FLERR,"Stats variable cannot be indexed");
+        n = input->variable->find(id);
+        if (n < 0) error->all(FLERR,"Could not find stats variable name");
+        if (input->variable->equal_style(n) == 0)
+          error->all(FLERR,"Stats variable is not equal-style variable");
+        if (argindex1[nfield])
+          error->all(FLERR,"Stats variable cannot be indexed");
 
-	field2index[nfield] = add_variable(id);
-	addfield(arg[i],&Stats::compute_variable,FLOAT);
+        field2index[nfield] = add_variable(id);
+        addfield(arg[i],&Stats::compute_variable,FLOAT);
       }
 
       delete [] id;
@@ -778,7 +785,7 @@ int Stats::add_compute(const char *id, int which)
   int icompute;
   for (icompute = 0; icompute < ncompute; icompute++)
     if ((strcmp(id,id_compute[icompute]) == 0) &&
-	which == compute_which[icompute]) break;
+        which == compute_which[icompute]) break;
   if (icompute < ncompute) return icompute;
 
   int n = strlen(id) + 1;
@@ -860,40 +867,41 @@ int Stats::evaluate_keyword(char *word, double *answer)
   } else if (strcmp(word,"elapsed") == 0) {
     if (update->runflag == 0)
       error->all(FLERR,
-		 "Variable stats keyword cannot be used between runs");
+                 "Variable stats keyword cannot be used between runs");
     compute_elapsed();
     dvalue = bivalue;
 
   } else if (strcmp(word,"elaplong") == 0) {
     if (update->runflag == 0)
       error->all(FLERR,
-		 "Variable stats keyword cannot be used between runs");
+                 "Variable stats keyword cannot be used between runs");
     compute_elaplong();
     dvalue = bivalue;
-
-  } else if (strcmp(word,"dt") == 0) {
-    compute_dt();
 
   } else if (strcmp(word,"cpu") == 0) {
     if (update->runflag == 0)
       error->all(FLERR,
-		 "Variable stats keyword cannot be used between runs");
+                 "Variable stats keyword cannot be used between runs");
     compute_cpu();
 
   } else if (strcmp(word,"tpcpu") == 0) {
     if (update->runflag == 0)
       error->all(FLERR,
-		 "Variable stats keyword cannot be used between runs");
+                 "Variable stats keyword cannot be used between runs");
     compute_tpcpu();
 
   } else if (strcmp(word,"spcpu") == 0) {
     if (update->runflag == 0)
       error->all(FLERR,
-		 "Variable stats keyword cannot be used between runs");
+                 "Variable stats keyword cannot be used between runs");
     compute_spcpu();
 
   } else if (strcmp(word,"wall") == 0) {
     compute_wall();
+  } else if (strcmp(word,"dt") == 0) {
+    compute_dt();
+  } else if (strcmp(word,"time") == 0) {
+    compute_time();
 
   } else if (strcmp(word,"np") == 0) {
     compute_np();
@@ -1073,6 +1081,14 @@ void Stats::compute_dt()
 
 /* ---------------------------------------------------------------------- */
 
+void Stats::compute_time()
+{
+  dvalue = update->time +
+    (update->ntimestep - update->time_last_update) * update->dt;
+}
+
+/* ---------------------------------------------------------------------- */
+
 void Stats::compute_cpu()
 {
   if (firststep == 0) dvalue = 0.0;
@@ -1084,7 +1100,8 @@ void Stats::compute_cpu()
 void Stats::compute_tpcpu()
 {
   double new_cpu;
-  double new_time = update->ntimestep * update->dt;
+  double new_time = update->time +
+   (update->ntimestep - update->time_last_update) * update->dt;
 
   if (firststep == 0) {
     new_cpu = 0.0;
@@ -1233,7 +1250,7 @@ void Stats::compute_nsreact()
 void Stats::compute_npave()
 {
   MPI_Allreduce(&update->nmove_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1243,7 +1260,7 @@ void Stats::compute_npave()
 void Stats::compute_ntouchave()
 {
   MPI_Allreduce(&update->ntouch_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1253,7 +1270,7 @@ void Stats::compute_ntouchave()
 void Stats::compute_ncommave()
 {
   MPI_Allreduce(&update->ncomm_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1263,7 +1280,7 @@ void Stats::compute_ncommave()
 void Stats::compute_nboundave()
 {
   MPI_Allreduce(&update->nboundary_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1273,7 +1290,7 @@ void Stats::compute_nboundave()
 void Stats::compute_nexitave()
 {
   MPI_Allreduce(&update->nexit_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1283,7 +1300,7 @@ void Stats::compute_nexitave()
 void Stats::compute_nscollave()
 {
   MPI_Allreduce(&update->nscollide_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1293,7 +1310,7 @@ void Stats::compute_nscollave()
 void Stats::compute_nscheckave()
 {
   MPI_Allreduce(&update->nscheck_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		MPI_SUM,world);
+                MPI_SUM,world);
   if (update->ntimestep == update->firststep) dvalue = 0.0;
   else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
 }
@@ -1305,7 +1322,7 @@ void Stats::compute_ncollave()
   if (!collide) dvalue = 0.0;
   else {
     MPI_Allreduce(&collide->ncollide_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		  MPI_SUM,world);
+                  MPI_SUM,world);
     if (update->ntimestep == update->firststep) dvalue = 0.0;
     else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
   }
@@ -1318,7 +1335,7 @@ void Stats::compute_nattemptave()
   if (!collide) dvalue = 0.0;
   else {
     MPI_Allreduce(&collide->nattempt_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		  MPI_SUM,world);
+                  MPI_SUM,world);
     if (update->ntimestep == update->firststep) dvalue = 0.0;
     else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
   }
@@ -1331,7 +1348,7 @@ void Stats::compute_nreactave()
   if (!collide) dvalue = 0.0;
   else {
     MPI_Allreduce(&collide->nreact_running,&bivalue,1,MPI_SPARTA_BIGINT,
-		  MPI_SUM,world);
+                  MPI_SUM,world);
     if (update->ntimestep == update->firststep) dvalue = 0.0;
     else dvalue = 1.0*bivalue / (update->ntimestep - update->firststep);
   }

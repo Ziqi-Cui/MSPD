@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -28,6 +28,10 @@ class Update : protected Pointers {
   bigint firststep,laststep;      // 1st & last step of this run
   bigint beginstep,endstep;       // 1st and last step of multiple runs
   int first_update;               // 0 before initial update, 1 after
+
+  double time;                    // simulation time at time_last_update
+  bigint time_last_update;        // last timestep that time was updated
+
   double dt;                      // timestep size
 
   char *unit_style;      // style of units used throughout simulation
@@ -38,7 +42,14 @@ class Update : protected Pointers {
   double nrho;           // number density of background gas
   double vstream[3];     // streaming velocity of background gas
   double temp_thermal;   // thermal temperature of background gas
-  double gravity[3];     // acceleration vector of gravity
+  int optmove_flag;      // global optmove option set
+
+  int fstyle;            // external field: NOFIELD, CFIELD, PFIELD, GFIELD
+  double field[3];       // constant external field
+  char *fieldID;         // fix ID for PFIELD or GFIELD
+  int ifieldfix;         // index of external field fix
+  int *field_active;     // ptr to field_active flags in fix
+  int fieldfreq;         // update GFIELD every this many timsteps
 
   int nmigrate;          // # of particles to migrate to new procs
   int *mlist;            // indices of particles to migrate
@@ -63,11 +74,16 @@ class Update : protected Pointers {
   bigint nscollide_running;
 
   int nstuck;                // # of particles stuck on surfs and deleted
+  int naxibad;               // # of particles where axisymm move was bad
+                             // in this case, bad means particle ended up
+                             // outside of final cell curved surf by epsilon
+                             // when move logic thinks it is inside cell
 
   int reorder_period;        // # of timesteps between particle reordering
   int global_mem_limit;      // max # of bytes in arrays for rebalance and reordering
   int mem_limit_grid_flag;   // 1 if using size of grid as memory limit
   void set_mem_limit_grid(int gnlocal = 0);
+  int have_mem_limit();      // 1 if have memory limit
 
   int copymode;          // 1 if copy of class (prevents deallocation of
                          //  base class when child copy is destroyed)
@@ -75,6 +91,15 @@ class Update : protected Pointers {
   class RanMars *ranmaster;   // master random number generator
 
   double rcblo[3],rcbhi[3];    // debug info from RCB for dump image
+
+  // this info accessed by SurfReactAdsorb to do on-surface reaction tallying
+
+  int nsurf_tally;         // # of Cmp tallying surf bounce info this step
+  int nboundary_tally;     // # of Cmp tallying boundary bounce info this step
+  class Compute **slist_active;   // list of active surf Computes this step
+  class Compute **blist_active;   // list of active boundary Computes this step
+
+  // public methods
 
   Update(class SPARTA *);
   ~Update();
@@ -91,7 +116,7 @@ class Update : protected Pointers {
  protected:
   int me,nprocs;
   int maxmigrate;            // max # of particles in mlist
-  class RanPark *random;     // RNG for particle timestep moves
+  class RanKnuth *random;     // RNG for particle timestep moves
 
   int collide_react;         // 1 if any SurfCollide or React classes defined
   int nsc,nsr;               // copy of Collide/React data in Surf class
@@ -104,15 +129,11 @@ class Update : protected Pointers {
   class Compute **slist_compute;  // list of all surf bounce Computes
   class Compute **blist_compute;  // list of all boundary bounce Computes
 
-  int nsurf_tally;         // # of Cmp tallying surf bounce info this step
-  int nboundary_tally;     // # of Cmp tallying boundary bounce info this step
-  class Compute **slist_active;   // list of active surf Computes this step
-  class Compute **blist_active;   // list of active boundary Computes this step
-
   int surf_pre_tally;       // 1 to log particle stats before surf collide
   int boundary_pre_tally;   // 1 to log particle stats before boundary collide
 
   int collide_react_setup();
+  void collide_react_reset();
   void collide_react_update();
 
   int bounce_setup();
@@ -150,33 +171,38 @@ class Update : protected Pointers {
 
   typedef void (Update::*FnPtr)();
   FnPtr moveptr;             // ptr to move method
-  template < int, int > void move();
+  template < int, int, int > void move();
   template < int, int > void move_weighted();
 
   int perturbflag;
-  typedef void (Update::*FnPtr2)(double, double *, double *);
+  typedef void (Update::*FnPtr2)(int, int, double, double *, double *);
   FnPtr2 moveperturb;        // ptr to moveperturb method
 
   // variants of moveperturb method
   // adjust end-of-move x,v due to perturbation on straight-line advection
 
-  inline void gravity2d(double dt, double *x, double *v) {
+  inline void field2d(int i, int icell, double dt, double *x, double *v) {
     double dtsq = 0.5*dt*dt;
-    x[0] += dtsq*gravity[0];
-    x[1] += dtsq*gravity[1];
-    v[0] += dt*gravity[0];
-    v[1] += dt*gravity[1];
+    x[0] += dtsq*field[0];
+    x[1] += dtsq*field[1];
+    v[0] += dt*field[0];
+    v[1] += dt*field[1];
   };
 
-  inline void gravity3d(double dt, double *x, double *v) {
+  inline void field3d(int i, int icell, double dt, double *x, double *v) {
     double dtsq = 0.5*dt*dt;
-    x[0] += dtsq*gravity[0];
-    x[1] += dtsq*gravity[1];
-    x[2] += dtsq*gravity[2];
-    v[0] += dt*gravity[0];
-    v[1] += dt*gravity[1];
-    v[2] += dt*gravity[2];
+    x[0] += dtsq*field[0];
+    x[1] += dtsq*field[1];
+    x[2] += dtsq*field[2];
+    v[0] += dt*field[0];
+    v[1] += dt*field[1];
+    v[2] += dt*field[2];
   };
+
+  // NOTE: cannot be inline b/c ref to modify->fix[] is not supported
+  //       unless possibly include modify.h and fix.h in this file
+  void field_per_particle(int, int, double, double *, double *);
+  void field_per_grid(int, int, double, double *, double *);
 };
 
 }

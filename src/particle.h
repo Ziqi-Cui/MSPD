@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -25,21 +25,26 @@ class Particle : protected Pointers {
   int exist;                // 1 if particles exist
   int sorted;               // 1 if particles are sorted by grid cell
 
+  enum{MAXVIBMODE=4};       // increase value if species need more vib modes
+
   struct Species {          // info on each particle species, read from file
     char id[16];            // species ID
     double molwt;           // molecular weight
     double mass;            // molecular mass
     double specwt;          // species weight
     double charge;          // multiple of electron charge
-    double rotrel;          // inverse rotational relaxation number
+    double rotrel;          // modify: rotational relaxation number (NOT inverse)
+    double rotrel_differ;   // modify: rotational relaxation number, when different species interact
     double rottemp[3];      // rotational temperature(s)
-    double vibtemp[4];      // vibrational temperature(s)
-    double vibrel[4];       // inverse vibrational relaxation number(s)
-    int vibdegen[4];        // vibrational mode degeneracies
+    double vibtemp[MAXVIBMODE];         // vibrational temperature(s)
+    double vibrel[MAXVIBMODE];          // modify: vibrational relaxation number(s) (NOT inverse)
+    double vibrel_differ[MAXVIBMODE];   // modify: vibrational relaxation number(s), when different species interact
+    int vibdegen[MAXVIBMODE];     // vibrational mode degeneracies
     int rotdof,vibdof;      // rotational/vibrational DOF
     int nrottemp,nvibmode;  // # of rotational/vibrational temps/modes defined
     int internaldof;        // 1 if either rotdof or vibdof != 0
     int vibdiscrete_read;   // 1 if species.vib file read for this species
+    double magmoment;       // magnetic moment, set by species_modify command
     double Zrot;
     double Zvib;            //Landau-Teller relax number
   };
@@ -52,9 +57,9 @@ class Particle : protected Pointers {
 
   struct VibFile {          // extra vibration info read from vibfile
     char id[16];
-    double vibrel[4];
-    double vibtemp[4];
-    int vibdegen[4];
+    double vibrel[MAXVIBMODE];
+    double vibtemp[MAXVIBMODE];
+    int vibdegen[MAXVIBMODE];
     int nmode;
   };
 
@@ -66,7 +71,7 @@ class Particle : protected Pointers {
   int nmixture;
   int maxmixture;
 
-  struct OnePart {
+  struct SPARTA_ALIGN(64) OnePart {
     int id;                 // particle ID
     int ispecies;           // particle species index
     int icell;              // which local Grid::cells the particle is in
@@ -113,6 +118,7 @@ class Particle : protected Pointers {
   // these variables are public, others below are private
 
   int ncustom;              // # of custom attributes, some may be deleted
+  char **ename;             // name of each attribute
   int *etype;               // type = INT/DOUBLE of each attribute
   int *esize;               // size = 0 for vector, N for array columns
   int *ewhich;              // index into eivec,eiarray,edvec,edarray for data
@@ -129,8 +135,8 @@ class Particle : protected Pointers {
 
   // Kokkos settings
 
-  int copy,copymode;        // 1 if copy of class (prevents deallocation of
-                            //  base class when child copy is destroyed)
+  int copy,uncopy,copymode; // prevent deallocation of
+                            //  base class when child copy is destroyed
 
   // methods
 
@@ -154,11 +160,12 @@ class Particle : protected Pointers {
   virtual int add_particle();
   int clone_particle(int);
   void add_species(int, char **);
-  void add_mixture(int, char **);
   int find_species(char *);
+  void species_modify(int, char **);
+  void add_mixture(int, char **);
   int find_mixture(char *);
-  double erot(int, double, class RanPark *);
-  double evib(int, double, class RanPark *);
+  double erot(int, double, class RanKnuth *);
+  double evib(int, double, class RanKnuth *);
 
   void write_restart_species(FILE *fp);
   void read_restart_species(FILE *fp);
@@ -174,15 +181,16 @@ class Particle : protected Pointers {
 
   int find_custom(char *);
   void error_custom();
-  int add_custom(char *, int, int);
-  void grow_custom(int, int, int);
-  void remove_custom(int);
-  void copy_custom(int, int);
-  int sizeof_custom();
+  virtual int add_custom(char *, int, int);
+  virtual void grow_custom(int, int, int);
+  virtual void remove_custom(int);
+  virtual void zero_custom(int);
+  virtual void copy_custom(int, int);
   void write_restart_custom(FILE *fp);
   void read_restart_custom(FILE *fp);
-  void pack_custom(int, char *);
-  void unpack_custom(char *, int);
+  int sizeof_custom();
+  virtual void pack_custom(int, char *);
+  virtual void unpack_custom(char *, int);
 
   bigint memory_usage();
 
@@ -200,13 +208,11 @@ class Particle : protected Pointers {
   RotFile *filerot;         // list of species rotation info read from file
   VibFile *filevib;         // list of species vibration info read from file
 
-  class RanPark *wrandom;   // RNG for particle weighting
+  class RanKnuth *wrandom;   // RNG for particle weighting
 
   // extra custom vectors/arrays for per-particle data
   // ncustom > 0 if there are any extra arrays
-  // these varaiables are private, others above are public
-
-  char **ename;             // name of each attribute
+  // these variables are private, others above are public
 
   int ncustom_ivec;         // # of integer vector attributes
   int ncustom_iarray;       // # of integer array attributes
@@ -219,10 +225,6 @@ class Particle : protected Pointers {
   int *icustom_dvec;        // index into ncustom for each double vector
   int *icustom_darray;      // index into ncustom for each double array
   int *edcol;               // # of columns in each double array (esize)
-
-  int *custom_restart_flag; // flag on each custom vec/array read from restart
-                            // used to delete them if not redefined in
-                            // restart script
 
   // private methods
 

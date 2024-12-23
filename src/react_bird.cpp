@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -24,7 +24,7 @@
 #include "modify.h"
 #include "fix.h"
 #include "fix_ambipolar.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "memory.h"
 #include "error.h"
@@ -54,8 +54,8 @@ ReactBird::ReactBird(SPARTA *sparta, int narg, char **arg) :
   readfile(arg[1]);
   check_duplicate();
 
-  tally_reactions = new int[nlist];
-  tally_reactions_all = new int[nlist];
+  tally_reactions = new bigint[nlist];
+  tally_reactions_all = new bigint[nlist];
   tally_flag = 0;
 
   reactions = NULL;
@@ -118,20 +118,20 @@ void ReactBird::init()
     OneReaction *r = &rlist[m];
     r->active = 1;
 
-    if (r->type == RECOMBINATION && recombflag_user == 0) {
+    if (r->type == RECOMBINATION && recombflag_user == 0) {  //针对于强制关掉复合反应的情况
       r->active = 0;
       continue;
     }
 
-    for (int i = 0; i < r->nreactant; i++) {
-      r->reactants[i] = particle->find_species(r->id_reactants[i]);
+    for (int i = 0; i < r->nreactant; i++) { //根据反应物列表判断反应是否发生
+      r->reactants[i] = particle->find_species(r->id_reactants[i]);  //return index of ID in list of species IDs
       if (r->reactants[i] < 0) {
         r->active = 0;
         break;
       }
     }
-
-    for (int i = 0; i < r->nproduct; i++) {
+    
+    for (int i = 0; i < r->nproduct; i++) {  //确定产物列表判断反应是否发生
       r->products[i] = particle->find_species(r->id_products[i]);
       if (r->products[i] < 0) {
 
@@ -140,7 +140,7 @@ void ReactBird::init()
         if (r->type == RECOMBINATION && i == 1) {
           if (strcmp(r->id_products[i],"atom") == 0) {
             r->products[i] = -1;
-            continue;
+            continue;                                           //产物显式为两个的情况包含"atom"、"mol"两种特殊情况
           } else if (strcmp(r->id_products[i],"mol") == 0) {
             r->products[i] = -2;
             continue;
@@ -228,7 +228,7 @@ void ReactBird::init()
     // symmetry parameter
 
     double epsilon = 1.0;
-    if (isp == jsp) epsilon = 2.0;
+    if (isp == jsp) epsilon = 2.0;  //对称因子
 
     double diam = collide->extract(isp,jsp,"diam");
     double omega = collide->extract(isp,jsp,"omega");
@@ -239,22 +239,19 @@ void ReactBird::init()
         (species[isp].mass + species[jsp].mass);
     double sigma = MY_PI*diam*diam;
 
-    // average DOFs participating in the reaction
+    // read effective internal DOFs participating in the reaction
 
-    double z = r->coeff[0];
+    //double z = r->coeff[0];
 
     // add additional coeff for effective DOF
-    // added MAX() limit, 24Aug18
 
     double c1 = MY_PIS*epsilon*r->coeff[2]/(2.0*sigma) *
-      sqrt(mr/(2.0*update->boltz*tref)) *
-      pow(tref,1.0-omega)/pow(update->boltz,r->coeff[3]-1.0+omega) *
-      tgamma(z+2.5-omega) / MAX(1.0e-6,tgamma(z+r->coeff[3]+1.5));
+      sqrt(mr/(2.0*update->boltz*tref)) *                              //c1参考Bird127页公式，不包含gamma函数项
+      pow(tref,1.0-omega)/pow(update->boltz,r->coeff[3]-1.0+omega);
     double c2 = r->coeff[3] - 1.0 + omega;
 
-    r->coeff[2] = c1;
-    r->coeff[3] = c2;
-    r->coeff[5] = z + 1.5 - omega;
+    r->coeff[2] = c1;     //对coeff进行重新赋值，用于react_tce程序
+    r->coeff[5] = omega;
 
     // add additional coeff for post-collision effective omega
     // mspec = post-collision species of the particle
@@ -886,7 +883,7 @@ double ReactBird::extract_tally(int m)
   if (!tally_flag) {
     tally_flag = 1;
     MPI_Allreduce(tally_reactions,tally_reactions_all,nlist,
-                  MPI_INT,MPI_SUM,world);
+                  MPI_SPARTA_BIGINT,MPI_SUM,world);
   }
 
   return 1.0*tally_reactions_all[m];

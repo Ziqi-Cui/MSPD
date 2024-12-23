@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -27,7 +27,7 @@
 #include "output.h"
 #include "dump.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "memory_kokkos.h"
 #include "error.h"
 #include "sparta_masks.h"
@@ -51,8 +51,8 @@ FixBalanceKokkos::FixBalanceKokkos(SPARTA *sparta, int narg, char **arg) :
 }
 
 /* ----------------------------------------------------------------------
- *    perform dynamic load balancing
- *    ------------------------------------------------------------------------- */
+   perform dynamic load balancing
+------------------------------------------------------------------------- */
 
 void FixBalanceKokkos::end_of_step()
 {

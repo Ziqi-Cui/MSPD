@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -29,10 +29,15 @@ namespace SPARTA_NS {
 class SurfCollideSpecular : public SurfCollide {
  public:
   SurfCollideSpecular(class SPARTA *, int, char **);
-  SurfCollideSpecular(class SPARTA *sparta) : SurfCollide(sparta) {}
+  SurfCollideSpecular(class SPARTA *sparta) : SurfCollide(sparta) {} // needed for Kokkos
   virtual ~SurfCollideSpecular() {}
-  Particle::OnePart *collide(Particle::OnePart *&, double *, double &,
-                             int, int &);
+  Particle::OnePart *collide(Particle::OnePart *&, double &,
+                             int, double *, int, int &);
+  void wrapper(Particle::OnePart *, double *, int *, double*);
+  void flags_and_coeffs(int *, double *);
+
+ protected:
+  int noslip_flag;
 };
 
 }

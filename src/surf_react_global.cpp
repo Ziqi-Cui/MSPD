@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -18,7 +18,7 @@
 #include "update.h"
 #include "comm.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_extra.h"
 #include "error.h"
 
@@ -37,6 +37,10 @@ SurfReactGlobal::SurfReactGlobal(SPARTA *sparta, int narg, char **arg) :
   if (prob_destroy + prob_create > 1.0)
     error->all(FLERR,"Illegal surf_react global command");
 
+  // setup the reaction tallies
+
+  nsingle = ntotal = 0;
+
   nlist = 2;
   tally_single = new int[nlist];
   tally_total = new int[nlist];
@@ -47,7 +51,7 @@ SurfReactGlobal::SurfReactGlobal(SPARTA *sparta, int narg, char **arg) :
 
   // initialize RNG
 
-  random = new RanPark(update->ranmaster->uniform());
+  random = new RanKnuth(update->ranmaster->uniform());
   double seed = update->ranmaster->uniform();
   random->reset(seed,comm->me,100);
 }
@@ -56,19 +60,19 @@ SurfReactGlobal::SurfReactGlobal(SPARTA *sparta, int narg, char **arg) :
 
 SurfReactGlobal::~SurfReactGlobal()
 {
+  if (copy) return;
+
   delete random;
 }
 
 /* ----------------------------------------------------------------------
    select surface reaction to perform for particle with ptr IP on surface
-   return 0 if no reaction
-   return 1 = destroy reaction
-   return 2 = create reaction
+   return which reaction 1 (destroy), 2 (create), 0 = no reaction
    if create, add particle and return ptr JP
 ------------------------------------------------------------------------- */
 
-int SurfReactGlobal::react(Particle::OnePart *&ip, double *,
-                           Particle::OnePart *&jp)
+int SurfReactGlobal::react(Particle::OnePart *&ip, int, double *,
+                           Particle::OnePart *&jp, int &)
 {
   double r = random->uniform();
 
@@ -115,4 +119,3 @@ char *SurfReactGlobal::reactionID(int m)
   if (m == 0) return (char *) "delete";
   return (char *) "create";
 }
-

@@ -1,48 +1,19 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
-#include <stdexcept>
 #include <sstream>
 #include <iostream>
 #include <limits>
@@ -50,6 +21,8 @@
 #include <Kokkos_Core.hpp>
 
 namespace Test {
+
+struct ReducerTag {};
 
 template <typename ScalarType, class DeviceType>
 class ReduceFunctor {
@@ -80,7 +53,7 @@ class ReduceFunctor {
   */
 
   KOKKOS_INLINE_FUNCTION
-  void join(volatile value_type& dst, const volatile value_type& src) const {
+  void join(value_type& dst, const value_type& src) const {
     dst.value[0] += src.value[0];
     dst.value[1] += src.value[1];
     dst.value[2] += src.value[2];
@@ -110,6 +83,44 @@ class ReduceFunctorFinal : public ReduceFunctor<int64_t, DeviceType> {
   }
 };
 
+template <class DeviceType>
+class ReduceFunctorFinalTag {
+ public:
+  using execution_space = DeviceType;
+  using size_type       = typename execution_space::size_type;
+  using ScalarType      = int64_t;
+
+  struct value_type {
+    ScalarType value[3];
+  };
+
+  const size_type nwork;
+
+  KOKKOS_INLINE_FUNCTION
+  ReduceFunctorFinalTag(const size_type arg_nwork) : nwork(arg_nwork) {}
+
+  KOKKOS_INLINE_FUNCTION
+  void join(const ReducerTag, value_type& dst, const value_type& src) const {
+    dst.value[0] += src.value[0];
+    dst.value[1] += src.value[1];
+    dst.value[2] += src.value[2];
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const ReducerTag, size_type iwork, value_type& dst) const {
+    dst.value[0] -= 1;
+    dst.value[1] -= iwork + 1;
+    dst.value[2] -= nwork - iwork;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void final(const ReducerTag, value_type& dst) const {
+    ++dst.value[0];
+    ++dst.value[1];
+    ++dst.value[2];
+  }
+};
+
 template <typename ScalarType, class DeviceType>
 class RuntimeReduceFunctor {
  public:
@@ -133,7 +144,7 @@ class RuntimeReduceFunctor {
   }
 
   KOKKOS_INLINE_FUNCTION
-  void join(volatile ScalarType dst[], const volatile ScalarType src[]) const {
+  void join(ScalarType dst[], const ScalarType src[]) const {
     for (unsigned i = 0; i < value_count; ++i) dst[i] += src[i];
   }
 
@@ -141,7 +152,7 @@ class RuntimeReduceFunctor {
   void operator()(size_type iwork, ScalarType dst[]) const {
     const size_type tmp[3] = {1, iwork + 1, nwork - iwork};
 
-    for (size_type i = 0; i < value_count; ++i) {
+    for (size_type i = 0; i < static_cast<size_type>(value_count); ++i) {
       dst[i] += tmp[i % 3];
     }
   }
@@ -177,7 +188,7 @@ class RuntimeReduceMinMax {
   }
 
   KOKKOS_INLINE_FUNCTION
-  void join(volatile ScalarType dst[], const volatile ScalarType src[]) const {
+  void join(ScalarType dst[], const ScalarType src[]) const {
     for (unsigned i = 0; i < value_count; ++i) {
       dst[i] = i % 2 ? (dst[i] < src[i] ? dst[i] : src[i])   // min
                      : (dst[i] > src[i] ? dst[i] : src[i]);  // max
@@ -189,7 +200,7 @@ class RuntimeReduceMinMax {
     const ScalarType tmp[2] = {ScalarType(iwork + 1),
                                ScalarType(nwork - iwork)};
 
-    for (size_type i = 0; i < value_count; ++i) {
+    for (size_type i = 0; i < static_cast<size_type>(value_count); ++i) {
       dst[i] = i % 2 ? (dst[i] < tmp[i % 2] ? dst[i] : tmp[i % 2])
                      : (dst[i] > tmp[i % 2] ? dst[i] : tmp[i % 2]);
     }
@@ -238,6 +249,15 @@ class CombinedReduceFunctorSameType {
     dst2 += iwork + 1;
     dst3 += nwork - iwork;
   }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(size_type iwork, size_type always_zero_1,
+                  size_type always_zero_2, ValueType& dst1, ValueType& dst2,
+                  ValueType& dst3) const {
+    dst1 += 1 + always_zero_1;
+    dst2 += iwork + 1 + always_zero_2;
+    dst3 += nwork - iwork;
+  }
 };
 
 namespace {
@@ -251,6 +271,7 @@ class TestReduce {
   TestReduce(const size_type& nwork) {
     run_test(nwork);
     run_test_final(nwork);
+    run_test_final_tag(nwork);
   }
 
   void run_test(const size_type& nwork) {
@@ -302,6 +323,39 @@ class TestReduce {
       for (unsigned j = 0; j < Count; ++j) {
         const uint64_t correct = 0 == j % 3 ? nw : nsum;
         ASSERT_EQ((ScalarType)correct, -result[i].value[j]);
+      }
+    }
+  }
+
+  void run_test_final_tag(const size_type& nwork) {
+    using functor_type = Test::ReduceFunctorFinalTag<execution_space>;
+    using value_type   = typename functor_type::value_type;
+
+    enum { Count = 3 };
+    enum { Repeat = 100 };
+
+    value_type result[Repeat];
+
+    const uint64_t nw   = nwork;
+    const uint64_t nsum = nw % 2 ? nw * ((nw + 1) / 2) : (nw / 2) * (nw + 1);
+
+    for (unsigned i = 0; i < Repeat; ++i) {
+      if (i % 2 == 0) {
+        Kokkos::parallel_reduce(
+            Kokkos::RangePolicy<execution_space, ReducerTag>(0, nwork),
+            functor_type(nwork), result[i]);
+      } else {
+        Kokkos::parallel_reduce(
+            "Reduce",
+            Kokkos::RangePolicy<execution_space, ReducerTag>(0, nwork),
+            functor_type(nwork), result[i]);
+      }
+    }
+
+    for (unsigned i = 0; i < Repeat; ++i) {
+      for (unsigned j = 0; j < Count; ++j) {
+        const uint64_t correct = 0 == j % 3 ? nw : nsum;
+        ASSERT_EQ((ScalarType)correct, 1 - result[i].value[j]);
       }
     }
   }
@@ -437,12 +491,11 @@ class TestReduceDynamicView {
 
       std::string str("TestKernelReduce");
       if (count % 2 == 0) {
-        Kokkos::parallel_reduce(nw, functor_type(nw, count),
-                                host_result.data());
+        Kokkos::parallel_reduce(nw, functor_type(nw, count), host_result);
       } else {
-        Kokkos::parallel_reduce(str, nw, functor_type(nw, count),
-                                host_result.data());
+        Kokkos::parallel_reduce(str, nw, functor_type(nw, count), host_result);
       }
+      Kokkos::fence("Fence before accessing result on the host");
 
       for (unsigned j = 0; j < count; ++j) {
         const uint64_t correct = 0 == j % 3 ? nw : nsum;
@@ -455,6 +508,12 @@ class TestReduceDynamicView {
 
 }  // namespace
 
+// FIXME_SYCL
+// FIXME_OPENMPTARGET : The feature works with LLVM/13 on NVIDIA
+// architectures. The jenkins currently tests with LLVM/12.
+#if !defined(KOKKOS_ENABLE_SYCL) &&          \
+    (!defined(KOKKOS_ENABLE_OPENMPTARGET) || \
+     defined(KOKKOS_COMPILER_CLANG) && (KOKKOS_COMPILER_CLANG >= 1300))
 TEST(TEST_CATEGORY, int64_t_reduce) {
   TestReduce<int64_t, TEST_EXECSPACE>(0);
   TestReduce<int64_t, TEST_EXECSPACE>(1000000);
@@ -479,7 +538,10 @@ TEST(TEST_CATEGORY, int64_t_reduce_dynamic_view) {
   TestReduceDynamicView<int64_t, TEST_EXECSPACE>(0);
   TestReduceDynamicView<int64_t, TEST_EXECSPACE>(1000000);
 }
+#endif
 
+// FIXME_OPENMPTARGET: Not yet implemented.
+#ifndef KOKKOS_ENABLE_OPENMPTARGET
 TEST(TEST_CATEGORY, int_combined_reduce) {
   using functor_type = CombinedReduceFunctorSameType<int64_t, TEST_EXECSPACE>;
   constexpr uint64_t nw = 1000;
@@ -494,9 +556,30 @@ TEST(TEST_CATEGORY, int_combined_reduce) {
                           Kokkos::RangePolicy<TEST_EXECSPACE>(0, nw),
                           functor_type(nw), result1, result2, result3);
 
-  ASSERT_EQ(nw, result1);
-  ASSERT_EQ(nsum, result2);
-  ASSERT_EQ(nsum, result3);
+  ASSERT_EQ(nw, uint64_t(result1));
+  ASSERT_EQ(nsum, uint64_t(result2));
+  ASSERT_EQ(nsum, uint64_t(result3));
+}
+
+TEST(TEST_CATEGORY, mdrange_combined_reduce) {
+  using functor_type = CombinedReduceFunctorSameType<int64_t, TEST_EXECSPACE>;
+  constexpr uint64_t nw = 1000;
+
+  uint64_t nsum = (nw / 2) * (nw + 1);
+
+  int64_t result1 = 0;
+  int64_t result2 = 0;
+  int64_t result3 = 0;
+
+  Kokkos::parallel_reduce(
+      "int_combined_reduce_mdrange",
+      Kokkos::MDRangePolicy<TEST_EXECSPACE, Kokkos::Rank<3>>({{0, 0, 0}},
+                                                             {{nw, 1, 1}}),
+      functor_type(nw), result1, result2, result3);
+
+  ASSERT_EQ(nw, uint64_t(result1));
+  ASSERT_EQ(nsum, uint64_t(result2));
+  ASSERT_EQ(nsum, uint64_t(result3));
 }
 
 TEST(TEST_CATEGORY, int_combined_reduce_mixed) {
@@ -505,20 +588,35 @@ TEST(TEST_CATEGORY, int_combined_reduce_mixed) {
   constexpr uint64_t nw = 1000;
 
   uint64_t nsum = (nw / 2) * (nw + 1);
-
-  auto result1_v = Kokkos::View<int64_t, Kokkos::HostSpace>{"result1_v"};
-
-  int64_t result2 = 0;
-
-  auto result3_v = Kokkos::View<int64_t, Kokkos::HostSpace>{"result3_v"};
-
-  Kokkos::parallel_reduce("int_combined-reduce_mixed",
-                          Kokkos::RangePolicy<TEST_EXECSPACE>(0, nw),
-                          functor_type(nw), result1_v, result2,
-                          Kokkos::Sum<int64_t, Kokkos::HostSpace>{result3_v});
-
-  ASSERT_EQ(nw, result1_v());
-  ASSERT_EQ(nsum, result2);
-  ASSERT_EQ(nsum, result3_v());
+  {
+    auto result1_v  = Kokkos::View<int64_t, Kokkos::HostSpace>{"result1_v"};
+    int64_t result2 = 0;
+    auto result3_v  = Kokkos::View<int64_t, Kokkos::HostSpace>{"result3_v"};
+    Kokkos::parallel_reduce("int_combined-reduce_mixed",
+                            Kokkos::RangePolicy<TEST_EXECSPACE>(0, nw),
+                            functor_type(nw), result1_v, result2,
+                            Kokkos::Sum<int64_t, Kokkos::HostSpace>{result3_v});
+    ASSERT_EQ(int64_t(nw), result1_v());
+    ASSERT_EQ(int64_t(nsum), result2);
+    ASSERT_EQ(int64_t(nsum), result3_v());
+  }
+  {
+    using MemorySpace = typename TEST_EXECSPACE::memory_space;
+    auto result1_v    = Kokkos::View<int64_t, MemorySpace>{"result1_v"};
+    int64_t result2   = 0;
+    auto result3_v    = Kokkos::View<int64_t, MemorySpace>{"result3_v"};
+    Kokkos::parallel_reduce("int_combined-reduce_mixed",
+                            Kokkos::RangePolicy<TEST_EXECSPACE>(0, nw),
+                            functor_type(nw), result1_v, result2,
+                            Kokkos::Sum<int64_t, MemorySpace>{result3_v});
+    int64_t result1;
+    Kokkos::deep_copy(result1, result1_v);
+    ASSERT_EQ(int64_t(nw), result1);
+    ASSERT_EQ(int64_t(nsum), result2);
+    int64_t result3;
+    Kokkos::deep_copy(result3, result3_v);
+    ASSERT_EQ(int64_t(nsum), result3);
+  }
 }
+#endif
 }  // namespace Test

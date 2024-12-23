@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -21,13 +21,7 @@
 #include "particle.h"
 #include "grid.h"
 #include "comm.h"
-#include "cut2d.h"
-#include "cut3d.h"
 #include "error.h"
-
-// DEBUG
-#include "modify.h"
-#include "fix_ablate.h"
 
 using namespace SPARTA_NS;
 
@@ -64,30 +58,12 @@ FixGridCheck::FixGridCheck(SPARTA *sparta, int narg, char **arg) :
     }
   }
 
-  if (outside_check && !surf->implicit)
-    error->all(FLERR,"Fix grid/check outside yes requires implicit surfs");
-
   // setup
 
   dim = domain->dimension;
-  cut2d = NULL;
-  cut3d = NULL;
-
-  if (outside_check) {
-    if (dim == 3) cut3d = new Cut3d(sparta);
-    else cut2d = new Cut2d(sparta,domain->axisymmetric);
-  }
 
   scalar_flag = 1;
   global_freq = 1;
-}
-
-/* ---------------------------------------------------------------------- */
-
-FixGridCheck::~FixGridCheck()
-{
-  delete cut2d;
-  delete cut3d;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -117,8 +93,6 @@ void FixGridCheck::setup()
 
 void FixGridCheck::end_of_step()
 {
-  if (update->ntimestep % nevery) return;
-
   Grid::ChildCell *cells = grid->cells;
   Grid::ChildInfo *cinfo = grid->cinfo;
   Grid::SplitInfo *sinfo = grid->sinfo;
@@ -133,6 +107,8 @@ void FixGridCheck::end_of_step()
   // check for split cell is whether particle is inside parent cell
 
   int nflag = 0;
+  int nflag_surf = 0;
+  int nflag_split = 0;
 
   for (int i = 0; i < nlocal; i++) {
     icell = particles[i].icell;
@@ -157,8 +133,8 @@ void FixGridCheck::end_of_step()
     hi = cells[icell].hi;
     x = particles[i].x;
     if (x[0] < lo[0] || x[0] > hi[0] ||
-	x[1] < lo[1] || x[1] > hi[1] ||
-	x[2] < lo[2] || x[2] > hi[2]) {
+        x[1] < lo[1] || x[1] > hi[1] ||
+        x[2] < lo[2] || x[2] > hi[2]) {
       if (outflag == ERROR) {
         //printf("BAD %d %d " CELLINT_FORMAT ": "
         //    "x %g %g %g: lo %g %g %g hi: %g %g %g\n",
@@ -218,120 +194,44 @@ void FixGridCheck::end_of_step()
       nflag++;
     }
 
-    // check if particle in a cell with surfs is outside the surfs
+
+    // check if particle in cut/split is outside the surfs
     // for split cell, also verify particle is in correct sub cell
     // expensive, so only do this check if requested
+    // if cell volume = zero, error has already been flagged
 
     if (!outside_check) continue;
     if (cells[icell].nsurf == 0) continue;
+    if (cinfo[icell].volume == 0.0) continue;
 
-    int splitcell,subcell,flag;
+    int pflag,splitcell;
+    double xcell[3];
 
-    if (cells[icell].nsplit <= 0) {
-      splitcell = sinfo[cells[icell].isplit].icell;
-      flag = grid->outside_surfs(splitcell,x,cut3d,cut2d);
-    } else flag = grid->outside_surfs(icell,x,cut3d,cut2d);
+    // check that particle is outside surfs
+    // if no xcell found, cannot check
 
-    if (!flag) {
+    pflag = grid->point_outside_surfs(icell,xcell);
+    if (!pflag) continue;
+    pflag = grid->outside_surfs(icell,x,xcell);
+
+    if (!pflag) {
       if (outflag == ERROR) {
         char str[128];
         sprintf(str,
-                "Particle %d,%d on proc %d is inside surfs in cell "
+                "Particle %d,%d on proc %d at %g %g %d is inside surfs in cell "
                 CELLINT_FORMAT " on timestep " BIGINT_FORMAT,
-                i,particles[i].id,comm->me,cells[icell].id,
+                i,particles[i].id,comm->me,x[0],x[1],icell,cells[icell].id,
                 update->ntimestep);
-        // DEBUG
-        printf("CELL SURFS %d %d\n",cells[icell].nsurf,cells[icell].nsplit);
-        printf("PART COORDS %g %g %g: cell bounds: %g %g %g %g %g %g\n",
-               particles[i].x[0],
-               particles[i].x[1],
-               particles[i].x[2],
-               cells[icell].lo[0],
-               cells[icell].lo[1],
-               cells[icell].lo[2],
-               cells[icell].hi[0],
-               cells[icell].hi[1],
-               cells[icell].hi[2]);
-
-        // MORE DEBUG
-
-        for (int mm = 0; mm < 1; mm++) {
-          int m;
-          if (mm == 0) m = 493;
-          if (mm == 1) m = 593;
-          if (mm == 2) m = 583;
-          if (mm == 3) m = 582;
-          if (mm == 4) m = 572;
-
-          Surf::Tri *tris = surf->tris;
-          Grid::ChildCell *cells = grid->cells;
-          int nglocal = grid->nlocal;
-
-          for (i = 0; i < nglocal; i++) {
-            if (cells[i].id != m) continue;
-            if (cells[i].nsplit <= 0) continue;
-
-            printf("CELL id %d lo %g %g %g hi %g %g %g\n",
-                   cells[i].id,
-                   cells[i].lo[0],
-                   cells[i].lo[1],
-                   cells[i].lo[2],
-                   cells[i].hi[0],
-                   cells[i].hi[1],
-                   cells[i].hi[2]);
-
-            printf("CELL surfs: nsurf %d nsplit %d\n",
-                   cells[i].nsurf,
-                   cells[i].nsplit);
-
-            for (int j = 0; j < cells[i].nsurf; j++) {
-              int n = cells[i].csurfs[j];
-              printf("  %d: id %d tmii %d %d %d %d\n",j+1,
-                      tris[n].id,
-                      tris[n].type,
-                      tris[n].mask,
-                      tris[n].isc,
-                      tris[n].isr);
-              printf("  %d: p1 %20.15g %20.15g %20.15g\n",j+1,
-                      tris[n].p1[0],
-                      tris[n].p1[1],
-                      tris[n].p1[2]);
-              printf("  %d: p2 %20.15g %20.15g %20.15g\n",j+1,
-                      tris[n].p2[0],
-                      tris[n].p2[1],
-                      tris[n].p2[2]);
-              printf("  %d: p3 %20.15g %20.15g %20.15g\n",j+1,
-                      tris[n].p3[0],
-                      tris[n].p3[1],
-                      tris[n].p3[2]);
-              printf("  %d: norm %20.15g %20.15g %20.15g\n",j+1,
-                      tris[n].norm[0],
-                      tris[n].norm[1],
-                      tris[n].norm[2]);
-            }
-
-            int ifix = modify->find_fix("FOO");
-            FixAblate *ablate = (FixAblate *) modify->fix[ifix];
-            int groupbit = grid->bitmask[ablate->igroup];
-
-            printf("MC CORNERS %d: %g %g %g %g %g %g %g %g\n",m,
-                    ablate->array_grid[i][0],
-                    ablate->array_grid[i][1],
-                    ablate->array_grid[i][2],
-                    ablate->array_grid[i][3],
-                    ablate->array_grid[i][4],
-                    ablate->array_grid[i][5],
-                    ablate->array_grid[i][6],
-                    ablate->array_grid[i][7]);
-          }
-        }
         error->one(FLERR,str);
       }
-      nflag++;
+      nflag_surf++;
     }
+
+    // check that particle is in correct split subcell
 
     if (cells[icell].nsplit <= 0) {
       int subcell;
+      splitcell = sinfo[cells[icell].isplit].icell;
       if (dim == 2) subcell = update->split2d(splitcell,x);
       else subcell = update->split3d(splitcell,x);
 
@@ -345,27 +245,41 @@ void FixGridCheck::end_of_step()
                   update->ntimestep);
           error->one(FLERR,str);
         }
-        nflag++;
+        nflag_split++;
       }
     }
   }
 
   // -------------------------------------
   // done with all tests
-  // warning message instead of error
+  // warning messages instead of errors
 
   if (outflag == WARNING) {
     int all;
     MPI_Allreduce(&nflag,&all,1,MPI_INT,MPI_SUM,world);
     if (all && comm->me == 0) {
       char str[128];
-      sprintf(str,"%d particles were in wrong cells on timestep "
+      sprintf(str,"%d particles in wrong cells on timestep "
+              BIGINT_FORMAT,all,update->ntimestep);
+      error->warning(FLERR,str);
+    }
+    MPI_Allreduce(&nflag_surf,&all,1,MPI_INT,MPI_SUM,world);
+    if (all && comm->me == 0) {
+      char str[128];
+      sprintf(str,"%d particles inside surfs on timestep "
+              BIGINT_FORMAT,all,update->ntimestep);
+      error->warning(FLERR,str);
+    }
+    MPI_Allreduce(&nflag_split,&all,1,MPI_INT,MPI_SUM,world);
+    if (all && comm->me == 0) {
+      char str[128];
+      sprintf(str,"%d particles in wrong sub cells on timestep "
               BIGINT_FORMAT,all,update->ntimestep);
       error->warning(FLERR,str);
     }
   }
 
-  ntotal += nflag;
+  ntotal += nflag + nflag_surf + nflag_split;
 }
 
 /* ----------------------------------------------------------------------

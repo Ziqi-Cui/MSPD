@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -75,10 +75,11 @@ void ReadISurf::command(int narg, char **arg)
     error->all(FLERR,"Cannot read_isurf unless global surfs implicit is set");
   if (surf->exist)
     error->all(FLERR,"Cannot read_isurf when surfs already exist");
-  if (particle->exist)
-    error->all(FLERR,"Cannot read_isurf when particles exist");
   if (domain->axisymmetric)
     error->all(FLERR,"Cannot read_isurf for axisymmetric domains");
+
+  if (particle->exist)
+    if (me == 0) error->warning(FLERR,"Using read_isurf when particles exist");
 
   surf->exist = 1;
 
@@ -247,7 +248,7 @@ void ReadISurf::create_hash(int count)
 
 void ReadISurf::read_corners_serial(char *gridfile)
 {
-  int nchunk;
+  int nchunk,tmp;
   int nxyz[3];
   FILE *fp;
 
@@ -268,7 +269,7 @@ void ReadISurf::read_corners_serial(char *gridfile)
                gridfile);
       error->one(FLERR,str);
     }
-    fread(nxyz,sizeof(int),dim,fp);
+    tmp = fread(nxyz,sizeof(int),dim,fp);
   }
 
   MPI_Bcast(nxyz,dim,MPI_INT,0,world);
@@ -295,10 +296,10 @@ void ReadISurf::read_corners_serial(char *gridfile)
     else nchunk = ncorners-nread;
 
     if (precision == INT) {
-      if (me == 0) fread(ibuf,sizeof(uint8_t),nchunk,fp);
+      if (me == 0) tmp = fread(ibuf,sizeof(uint8_t),nchunk,fp);
       MPI_Bcast(ibuf,nchunk,MPI_CHAR,0,world);
     } else if (precision == DOUBLE) {
-      if (me == 0) fread(dbuf,sizeof(double),nchunk,fp);
+      if (me == 0) tmp = fread(dbuf,sizeof(double),nchunk,fp);
       MPI_Bcast(dbuf,nchunk,MPI_DOUBLE,0,world);
     }
 
@@ -400,11 +401,11 @@ void ReadISurf::assign_corners(int n, bigint offset, uint8_t *ibuf, double *dbuf
 
 void ReadISurf::read_types_serial(char *typefile)
 {
-  int nchunk;
+  int nchunk,tmp;
   int nxyz[3];
   FILE *fp;
 
-  int *buf;
+  uint8_t *buf = NULL ;
   memory->create(buf,CHUNK,"readisurf:buf");
 
   // proc 0 opens and reads binary file
@@ -417,7 +418,7 @@ void ReadISurf::read_types_serial(char *typefile)
       snprintf(str,128,"Cannot open read_isurf type file %s",typefile);
       error->one(FLERR,str);
     }
-    fread(nxyz,sizeof(int),dim,fp);
+    tmp = fread(nxyz,sizeof(int),dim,fp);
   }
 
   MPI_Bcast(nxyz,dim,MPI_INT,0,world);
@@ -439,8 +440,8 @@ void ReadISurf::read_types_serial(char *typefile)
     if (ntypes-nread > CHUNK) nchunk = CHUNK;
     else nchunk = ntypes-nread;
 
-    if (me == 0) fread(buf,sizeof(int),nchunk,fp);
-    MPI_Bcast(buf,nchunk,MPI_INT,0,world);
+    if (me == 0) tmp = fread(buf,sizeof(uint8_t),nchunk,fp);
+    MPI_Bcast(buf,nchunk,MPI_CHAR,0,world);
 
     assign_types(nchunk,nread,buf);
     nread += nchunk;
@@ -463,7 +464,7 @@ void ReadISurf::read_types_serial(char *typefile)
    use hash to see if I own grid cell corresponding to index (0 to N-1)
 ------------------------------------------------------------------------- */
 
-void ReadISurf::assign_types(int n, bigint offset, int *buf)
+void ReadISurf::assign_types(int n, bigint offset, uint8_t *buf)
 {
   int icell;
   bigint cellindex;
@@ -495,7 +496,7 @@ void ReadISurf::assign_types(int n, bigint offset, int *buf)
 
 void ReadISurf::read_corners_parallel(char *gridfile)
 {
-  int nchunk;
+  int tmp;
   int nxyz[3];
   FILE *fp;
 
@@ -510,7 +511,7 @@ void ReadISurf::read_corners_parallel(char *gridfile)
                gridfile);
       error->one(FLERR,str);
     }
-    fread(nxyz,sizeof(int),dim,fp);
+    tmp = fread(nxyz,sizeof(int),dim,fp);
   }
 
   MPI_Bcast(nxyz,dim,MPI_INT,0,world);
@@ -555,10 +556,10 @@ void ReadISurf::read_corners_parallel(char *gridfile)
   fp = fopen(gridfile,"rb");
   if (precision == INT) {
     fseek(fp,offset*sizeof(uint8_t)+dim*sizeof(int),SEEK_SET);
-    fread(ibuf,sizeof(uint8_t),nvalues,fp);
+    tmp = fread(ibuf,sizeof(uint8_t),nvalues,fp);
   } else if (precision == DOUBLE) {
     fseek(fp,offset*sizeof(double)+dim*sizeof(int),SEEK_SET);
-    fread(dbuf,sizeof(double),nvalues,fp);
+    tmp = fread(dbuf,sizeof(double),nvalues,fp);
   }
   fclose(fp);
 
@@ -702,8 +703,8 @@ void ReadISurf::read_corners_parallel(char *gridfile)
 
   char *buf;
   int nout = comm->rendezvous(1,nrvous,(char *) sdatum,sizeof(SendDatum),
-			      0,proclist,rendezvous_corners,
-			      0,buf,sizeof(RecvDatum),(void *) this);
+                              0,proclist,rendezvous_corners,
+                              0,buf,sizeof(RecvDatum),(void *) this);
   RecvDatum *rdatum = (RecvDatum *) buf;
 
   memory->destroy(proclist);

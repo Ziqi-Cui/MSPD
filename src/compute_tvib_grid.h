@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -28,15 +28,15 @@ namespace SPARTA_NS {
 class ComputeTvibGrid : public Compute {
  public:
   ComputeTvibGrid(class SPARTA *, int, char **);
-  ~ComputeTvibGrid();
-  void init();
-  void compute_per_grid();
-  int query_tally_grid(int, double **&, int *&);
-  void post_process_grid(int, int, double **, int *, double *, int);
-  void reallocate();
+  virtual ~ComputeTvibGrid();
+  virtual void init();
+  virtual void compute_per_grid();
+  virtual int query_tally_grid(int, double **&, int *&);
+  virtual void post_process_grid(int, int, double **, int *, double *, int);
+  virtual void reallocate();
   bigint memory_usage();
 
- private:
+ protected:
   int groupbit,imix,ngroup,mixspecies,nspecies;
   int modeflag;              // 1 when tallying stats for each vib mode
   int maxmode;               // max vib mode for any species
@@ -60,8 +60,6 @@ class ComputeTvibGrid : public Compute {
 
   int *s2t;                  // s2t[i] = first tally column for species I
                              // size = Nspecies
-  int *t2s;                  // t2s[i] = species index for Ith tally column
-                             // size = Ntally = 2*Nspecies
 
   // modeflag = 1 or 2, tallying per grid cell, per species, per mode
 
@@ -72,8 +70,6 @@ class ComputeTvibGrid : public Compute {
   int **s2t_mode;            // s2tmode[i][j] =
                              //   first tally column for species I, mode J
                              // length = Nspecies by Nmode
-  int *t2s_mode;             // t2s_mode[i] = species index for Ith tally column
-                             // size = Ntally = 2*Nspecies*Nmode
 };
 
 }

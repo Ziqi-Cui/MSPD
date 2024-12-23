@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -46,10 +46,11 @@ Fix::Fix(SPARTA *sparta, int, char **arg) : Pointers(sparta)
 
   time_depend = 0;
   gridmigrate = 0;
-  flag_add_particle = flag_gas_react = flag_surf_react = 0;
+  flag_update_custom = flag_gas_react = flag_surf_react = 0;
 
   scalar_flag = vector_flag = array_flag = 0;
   per_particle_flag = per_grid_flag = per_surf_flag = 0;
+  per_particle_field = per_grid_field = 0;
 
   // mask settings - same as in modify.cpp
 
@@ -57,7 +58,7 @@ Fix::Fix(SPARTA *sparta, int, char **arg) : Pointers(sparta)
   END_OF_STEP = 2;
 
   kokkos_flag = 0;
-  copymode = 0;
+  copy = uncopy = copymode = 0;
 
   execution_space = Host;
   datamask_read = ALL_MASK;
@@ -68,7 +69,7 @@ Fix::Fix(SPARTA *sparta, int, char **arg) : Pointers(sparta)
 
 Fix::~Fix()
 {
-  if (copymode) return;
+  if (copy || copymode) return;
 
   delete [] id;
   delete [] style;

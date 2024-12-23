@@ -1,8 +1,32 @@
+//@HEADER
+// ************************************************************************
+//
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
+//               Solutions of Sandia, LLC (NTESS).
+//
+// Under the terms of Contract DE-NA0003525 with NTESS,
+// the U.S. Government retains certain rights in this software.
+//
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//@HEADER
 
 #include <inttypes.h>
 #include <iostream>
 
 struct Kokkos_Profiling_KokkosPDeviceInfo;
+
+// just get the basename for print_help/parse_args
+std::string get_basename(char* cmd, int idx = 0) {
+  if (idx > 0) return cmd;
+  std::string _cmd = cmd;
+  auto _pos        = _cmd.find_last_of('/');
+  if (_pos != std::string::npos) return _cmd.substr(_pos + 1);
+  return _cmd;
+}
 
 struct SpaceHandle {
   char name[64];
@@ -21,6 +45,16 @@ extern "C" void kokkosp_init_library(
 
 extern "C" void kokkosp_finalize_library() {
   std::cout << "kokkosp_finalize_library::";
+}
+
+extern "C" void kokkosp_print_help(char* exe) {
+  std::cout << "kokkosp_print_help:" << get_basename(exe) << "::";
+}
+
+extern "C" void kokkosp_parse_args(int argc, char** argv) {
+  std::cout << "kokkosp_parse_args:" << argc;
+  for (int i = 0; i < argc; ++i) std::cout << ":" << get_basename(argv[i], i);
+  std::cout << "::";
 }
 
 extern "C" void kokkosp_begin_parallel_for(const char* name,
@@ -59,7 +93,7 @@ extern "C" void kokkosp_end_parallel_reduce(const uint64_t kID) {
   std::cout << "kokkosp_end_parallel_reduce:" << kID << "::";
 }
 
-extern "C" void kokkosp_push_profile_region(char* regionName) {
+extern "C" void kokkosp_push_profile_region(const char* regionName) {
   std::cout << "kokkosp_push_profile_region:" << regionName << "::";
 }
 
@@ -68,13 +102,13 @@ extern "C" void kokkosp_pop_profile_region() {
 }
 
 extern "C" void kokkosp_allocate_data(SpaceHandle handle, const char* name,
-                                      void* ptr, uint64_t size) {
+                                      const void* ptr, uint64_t size) {
   std::cout << "kokkosp_allocate_data:" << handle.name << ":" << name << ":"
             << ptr << ":" << size << "::";
 }
 
 extern "C" void kokkosp_deallocate_data(SpaceHandle handle, const char* name,
-                                        void* ptr, uint64_t size) {
+                                        const void* ptr, uint64_t size) {
   std::cout << "kokkosp_deallocate_data:" << handle.name << ":" << name << ":"
             << ptr << ":" << size << "::";
 }
@@ -115,4 +149,7 @@ extern "C" void kokkosp_destroy_profile_section(uint32_t sec_id) {
 
 extern "C" void kokkosp_profile_event(const char* name) {
   std::cout << "kokkosp_profile_event:" << name << "::";
+}
+extern "C" void kokkosp_declare_metadata(const char* key, const char* value) {
+  std::cout << "kokkosp_declare_metadata:" << key << ":" << value << "::";
 }

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -18,8 +18,8 @@ FixStyle(ave/grid/kk,FixAveGridKokkos)
 
 #else
 
-#ifndef LMP_FIX_AVE_GRID_KOKKOS_H
-#define LMP_FIX_AVE_GRID_KOKKOS_H
+#ifndef SPARTA_FIX_AVE_GRID_KOKKOS_H
+#define SPARTA_FIX_AVE_GRID_KOKKOS_H
 
 #include "fix_ave_grid.h"
 #include "kokkos_type.h"

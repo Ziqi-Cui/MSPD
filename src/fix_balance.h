@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -43,17 +43,18 @@ class FixBalance : public Fix {
   char eligible[4];
   double last,my_timer_cost;
 
+  int nbalance;                 // # of rebalancings performed
   double imbnow;                // current imbalance factor
   double imbprev;               // imbalance factor before last rebalancing
   double imbfinal;              // imbalance factor after last rebalancing
   double maxperproc;            // max atoms or CPU cost on any processor
 
-  class RanPark *random;
+  class RanKnuth *random;
   class RCB *rcb;
 
   double imbalance_factor(double &);
   void timer_cost();
-  void timer_cell_weights(double *);
+  void timer_cell_weights(double *&);
 };
 
 }

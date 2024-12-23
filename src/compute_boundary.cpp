@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -24,12 +24,14 @@
 #include "math_extra.h"
 #include "memory.h"
 #include "error.h"
+#include "math_const.h"
 
 using namespace SPARTA_NS;
+using namespace MathConst;
 
 enum{XLO,XHI,YLO,YHI,ZLO,ZHI,INTERIOR};         // same as Domain
 enum{PERIODIC,OUTFLOW,REFLECT,SURFACE,AXISYM};  // same as Domain
-enum{NUM,NUMWT,MFLUX,PRESS,XSHEAR,YSHEAR,ZSHEAR,KE,EROT,EVIB,ETOT};
+enum{NUM,NUMWT,NFLUX,MFLUX,PRESS,XSHEAR,YSHEAR,ZSHEAR,KE,EROT,EVIB,ETOT};
 
 /* ---------------------------------------------------------------------- */
 
@@ -49,6 +51,7 @@ ComputeBoundary::ComputeBoundary(SPARTA *sparta, int narg, char **arg) :
   while (iarg < narg) {
     if (strcmp(arg[iarg],"n") == 0) which[nvalue++] = NUM;
     else if (strcmp(arg[iarg],"nwt") == 0) which[nvalue++] = NUMWT;
+    else if (strcmp(arg[iarg],"nflux") == 0) which[nvalue++] = NFLUX;
     else if (strcmp(arg[iarg],"mflux") == 0) which[nvalue++] = MFLUX;
     else if (strcmp(arg[iarg],"press") == 0) which[nvalue++] = PRESS;
     else if (strcmp(arg[iarg],"shx") == 0) which[nvalue++] = XSHEAR;
@@ -99,7 +102,14 @@ void ComputeBoundary::init()
   double nfactor = update->dt/update->fnum;
   if (domain->dimension == 2) {
     normflux[XLO] = normflux[XHI] = domain->yprd * nfactor;
-    normflux[YLO] = normflux[YHI] = domain->xprd * nfactor;
+
+    if (!domain->axisymmetric)
+      normflux[YLO] = normflux[YHI] = domain->xprd * nfactor;
+    else {
+      // normflux[YLO] is actually 0 in axisymmetric case
+      //  but is used in tally normalization even though numerator will be 0
+      normflux[YLO] = normflux[YHI] = 2 * MY_PI * domain->xprd * domain->yprd * nfactor;
+    }
   } else if (domain->dimension == 3) {
     normflux[XLO] = normflux[XHI] = domain->yprd*domain->zprd * nfactor;
     normflux[YLO] = normflux[YHI] = domain->xprd*domain->zprd * nfactor;
@@ -214,6 +224,9 @@ void ComputeBoundary::boundary_tally(int iface, int istyle, int reaction,
       case NUMWT:
         vec[k++] += weight;
         break;
+      case NFLUX:
+        vec[k++] += weight;
+        break;
       case MFLUX:
         vec[k++] += origmass;
         break;
@@ -275,10 +288,17 @@ void ComputeBoundary::boundary_tally(int iface, int istyle, int reaction,
       case NUMWT:
         vec[k++] += weight;
         break;
+      case NFLUX:
+        vec[k] += weight;
+        if (ip) vec[k] -= weight;
+        if (jp) vec[k] -= weight;
+        k++;
+        break;
       case MFLUX:
-        vec[k++] += origmass;
-        if (ip) vec[k++] -= imass;
-        if (jp) vec[k++] -= jmass;
+        vec[k] += origmass;
+        if (ip) vec[k] -= imass;
+        if (jp) vec[k] -= jmass;
+        k++;
         break;
       case PRESS:
         MathExtra::scale3(-origmass,vorig,pdelta);

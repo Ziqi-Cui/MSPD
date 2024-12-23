@@ -2,7 +2,7 @@ from __future__ import print_function
 from __future__ import division
 #   SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
 #   http://sparta.sandia.gov
-#   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov,
+#   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov,
 #   Thomas Otahal, tjotaha@sandia.gov
 #   Sandia National Laboratories
 
@@ -31,6 +31,10 @@ class SpartaGridFile:
     self.__level_dimensions = {}
     self.__grid_file_handle = None
     self.__grid_file_path = grid_file_path
+    self.__iterate_local_cell_ids = False
+    self.__iteration_start = 0
+    self.__iteration_skip = 1
+    self.__cell_iteration_count = 0
     self._open_grid_file()
     self._read_grid_file_header()
     self._close_grid_file()
@@ -43,6 +47,17 @@ class SpartaGridFile:
   def number_of_levels(self):
     return self.__number_of_levels
 
+  @property
+  def iterate_local_cell_ids(self):
+    return self.__iterate_local_cell_ids
+
+  @iterate_local_cell_ids.setter
+  def iterate_local_cell_ids(self, value):
+        if type(value) is not bool:
+            raise TypeError("Must be type bool")
+        else:
+            self.__iterate_local_cell_ids = value
+
   def get_level_dimensions(self, level_number):
     if level_number in self.__level_dimensions:
        return self.__level_dimensions[level_number]
@@ -52,15 +67,54 @@ class SpartaGridFile:
   def __iter__(self):
     self._open_grid_file()
     self._go_to_grid_file_cells_section()
+    self.__cell_iteration_count = 0
     return self
 
-  def __next__(self):
-    line = self.__grid_file_handle.readline()
-    if not line:
+  def next(self):
+    try:
+      return self._get_next_cell()
+    except StopIteration:
       self._close_grid_file()
       raise StopIteration
+
+  __next__ = next
+
+  def set_iteration_start(self, start):
+    self.__iteration_start = start
+
+  def set_iteration_skip(self, skip):
+    self.__iteration_skip = skip
+
+  def _get_next_cell(self):
+    local_cell_id = self._get_next_valid_cell()
+    if self.iterate_local_cell_ids:
+      return local_cell_id
     else:
-      return self._create_dashed_id(self._clean_line(line))
+      return self.create_dashed_id(local_cell_id)
+
+  def _get_next_valid_cell(self):
+    line = ""
+    while self._line_is_not_valid(line):
+      line = next(self.__grid_file_handle)
+      line = self._clean_line(line)
+      self.__cell_iteration_count += 1
+    return line
+
+  def _line_is_not_valid(self, line):
+    iter_count = self.__cell_iteration_count - self.__iteration_start
+    if not line:
+      return True
+    elif iter_count < 0:
+      return True
+    elif iter_count % self.__iteration_skip != 0:
+      return True
+    else:
+      return False
+
+  def _skip_to_iteration_start(self):
+    line_count = 0
+    for line in self.__grid_file_handle:
+      line_count += 1
 
   def _get_grid_file_cells_section_string(self):
     return 'Cells'
@@ -136,13 +190,13 @@ class SpartaGridFile:
       y = ldims['y']
       z = ldims['z']
       bits = int(math.floor(math.log(int(x*y*z),2)) + 1)
-      mask = 2**bits - 1
-      mask = mask << bits_shifted_left
-      ldims['bit_mask'] = mask
+      max_decimal_value = 2**bits-1
+      bit_mask = max_decimal_value << bits_shifted_left
+      ldims['bit_mask'] = bit_mask
       ldims['bits_to_shift_right'] = bits_shifted_left
       bits_shifted_left += bits
   
-  def _create_dashed_id(self, local_cell_id):
+  def create_dashed_id(self, local_cell_id):
     if not local_cell_id:
       return local_cell_id
     local_cell_id = int(local_cell_id)
@@ -161,6 +215,55 @@ class SpartaGridFile:
         else:
           dashed_id = str(level_id) + "-" + dashed_id
     return dashed_id
+
+  def get_local_cell_id_from_dashed_cell_id(self, dashed_id):
+    id = 0
+    if dashed_id:
+      cells = SpartaGridFile.get_cells_in_dashed_id(dashed_id)
+      for level in range(len(cells), 0, -1):
+        cid = cells[len(cells)-level]
+        ldims = self.get_level_dimensions(level)
+        bits_to_shift_right = ldims["bits_to_shift_right"]
+        max_decimal_value = 1 << bits_to_shift_right
+        id += cid*max_decimal_value
+    return id
+
+  def get_parent_cells_in_dashed_id(self, dashed_id):
+    parents = dashed_id.split('-')
+    if len(parents) == 1:
+      return []
+    parents.pop(0)
+    parents = [int(i) for i in parents]
+    parents.reverse()
+    return parents
+
+  @staticmethod
+  def compare_dashed_ids(dashed_id_one, dashed_id_two):
+    cells_one = SpartaGridFile.get_cells_in_dashed_id(dashed_id_one)
+    cells_one.reverse()
+    cells_two = SpartaGridFile.get_cells_in_dashed_id(dashed_id_two)
+    cells_two.reverse()
+    length_one = len(cells_one)
+    length_two = len(cells_two)
+
+    for i in range(min(length_one, length_two)):
+        if cells_one[i] < cells_two[i]:
+            return -1
+        elif cells_one[i] > cells_two[i]:
+            return 1
+
+    if length_one < length_two:
+        return -1
+    elif length_one > length_two:
+        return 1
+    else:
+        return 0
+
+  @staticmethod
+  def get_cells_in_dashed_id(dashed_id):
+    children = dashed_id.split('-')
+    children = [int(i) for i in children]
+    return children
 
 def create_grid_from_grid_file(grid_desc):
   sgf = SpartaGridFile(grid_desc["read_grid"])
@@ -373,18 +476,20 @@ def read_grid_file(grid_desc, chunk_info):
     if dashed_id:
       first_level_loc = get_cell_first_level_location(dashed_id, grid_desc)
       if cell_is_inside_chunk(first_level_loc, chunk_info):
-        parents = get_parent_cells_in_dashed_id(dashed_id)
+        parents = sgf.get_parent_cells_in_dashed_id(dashed_id)
         cld = grid_desc["parent_grid"]
+
         for idx, pid in enumerate(parents):
           level = idx + 1
-          if pid in cld:
-            cld = cld[pid]['np']
-          else:
+
+          if pid not in cld:
             level_dims = sgf.get_level_dimensions(level+1)
             x = level_dims['x']
             y = level_dims['y']
             z = level_dims['z']
             cld[pid] = {'px': x, 'py': y, 'pz': z, 'np':{}}
+
+          cld = cld[pid]['np']
 
 def cell_is_inside_chunk(cell_first_level_loc, chunk_info):
   xloc = cell_first_level_loc['x']
@@ -407,15 +512,6 @@ def get_cell_first_level_location(dashed_id, grid_desc):
   yloc += 1
   zloc += 1
   return {'x' : xloc, 'y' : yloc, 'z' : zloc}
-
-def get_parent_cells_in_dashed_id(dashed_id):
-  parents = dashed_id.split('-')
-  if len(parents) == 1:
-    return []
-  parents.pop(0)
-  parents = [int(i) for i in parents]
-  parents.reverse()
-  return parents
 
 def level_contains_refined_cells(level, grid_desc, dashed_id):
   if "parent_grid" in grid_desc:
@@ -935,9 +1031,9 @@ def read_grid_description_file(sif, grid_desc):
       grid_desc["slice"].append(p)
     elif s.lower()[:10] == "create_box" and len(s.split()) == 7:
       grid_desc["create_box"] = {}
-      if s.split()[1] < s.split()[2] and \
-         s.split()[3] < s.split()[4] and \
-         s.split()[5] < s.split()[6]:
+      if float(s.split()[1]) < float(s.split()[2]) and \
+         float(s.split()[3]) < float(s.split()[4]) and \
+         float(s.split()[5]) < float(s.split()[6]):
          grid_desc["create_box"]["xlo"] = float(s.split()[1])
          grid_desc["create_box"]["xhi"] = float(s.split()[2])
          grid_desc["create_box"]["ylo"] = float(s.split()[3])
@@ -1321,15 +1417,15 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--catalystscript', help="Run a ParaView Catalyst Python script with pvbatch")
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-r', '--result', help="Optional list of SPARTA dump result files", nargs='+')
-    group.add_argument('-rf', '--resultfile', \
+    group.add_argument('-f', '--resultfile', \
                         help="Optional filename containing path names of SPARTA dump result files")
-    parser.add_argument('-xc', '--xchunk', \
+    parser.add_argument('-x', '--xchunk', \
                         help="Optional x grid chunk size (positive integer; default 100)", \
                         default=100, type=int)
-    parser.add_argument('-yc', '--ychunk', \
+    parser.add_argument('-y', '--ychunk', \
                         help="Optional y grid chunk size (positive integer; default 100)", \
                         default=100, type=int)
-    parser.add_argument('-zc', '--zchunk', \
+    parser.add_argument('-z', '--zchunk', \
                         help="Optional z grid chunk size (positive integer; default 100)", \
                         default=100, type=int)
     args = parser.parse_args()

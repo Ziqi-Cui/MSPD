@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -12,7 +12,6 @@
    See the README file in the top-level SPARTA directory.
 ------------------------------------------------------------------------- */
 
-#include "math.h"
 #include "surf_collide_transparent_kokkos.h"
 #include "error.h"
 
@@ -23,45 +22,41 @@ using namespace SPARTA_NS;
 SurfCollideTransparentKokkos::SurfCollideTransparentKokkos(SPARTA *sparta, int narg, char **arg) :
   SurfCollideTransparent(sparta, narg, arg)
 {
+  kokkosable = 1;
+
   k_nsingle = DAT::tdual_int_scalar("SurfCollide:nsingle");
   d_nsingle = k_nsingle.d_view;
   h_nsingle = k_nsingle.h_view;
+
+  allowreact = 0;
 }
 
 SurfCollideTransparentKokkos::SurfCollideTransparentKokkos(SPARTA *sparta) :
   SurfCollideTransparent(sparta)
 {
-  // ID and style
-  // ID must be all alphanumeric chars or underscores
+  id = NULL;
+  style = NULL;
 
-  int narg = 2;
-  const char* arg[] = {"sc_kk_transparent_copy","transparent"};
+  t_owned = NULL;
+  t_localghost = NULL;
+}
 
-  int n = strlen(arg[0]) + 1;
-  id = new char[n];
-  strcpy(id,arg[0]);
+/* ---------------------------------------------------------------------- */
 
-  for (int i = 0; i < n-1; i++)
-    if (!isalnum(id[i]) && id[i] != '_')
-      error->all(FLERR,"Surf_collide ID must be alphanumeric or "
-                 "underscore characters");
+void SurfCollideTransparentKokkos::pre_collide()
+{
+  Kokkos::deep_copy(d_nsingle,0);
+}
 
-  n = strlen(arg[1]) + 1;
-  style = new char[n];
-  strcpy(style,arg[1]);
+/* ---------------------------------------------------------------------- */
 
-  vector_flag = 1;
-  size_vector = 2;
+void SurfCollideTransparentKokkos::post_collide()
+{
+  Kokkos::deep_copy(h_nsingle,d_nsingle);
 
-  nsingle = ntotal = 0;
+  // can't modify the copy directly, use the original
 
-  copy = 0;
-
-  if (narg != 2) error->all(FLERR,"Illegal surf_collide transparent command");
-
-  transparent = 1;
-
-  k_nsingle = DAT::tdual_int_scalar("SurfCollide:nsingle");
-  d_nsingle = k_nsingle.d_view;
-  h_nsingle = k_nsingle.h_view;
+  int m = surf->find_collide(id);
+  auto sc = surf->sc[m];
+  sc->nsingle += h_nsingle();
 }

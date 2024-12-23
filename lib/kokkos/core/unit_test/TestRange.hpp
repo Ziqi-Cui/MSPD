@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #include <cstdio>
 
@@ -72,8 +44,9 @@ struct TestRange {
   int offset;
 #endif
   TestRange(const size_t N_)
-      : m_flags(Kokkos::ViewAllocateWithoutInitializing("flags"), N_),
-        result_view(Kokkos::ViewAllocateWithoutInitializing("results"), N_),
+      : m_flags(Kokkos::view_alloc(Kokkos::WithoutInitializing, "flags"), N_),
+        result_view(Kokkos::view_alloc(Kokkos::WithoutInitializing, "results"),
+                    N_),
         N(N_) {
 #ifdef KOKKOS_WORKAROUND_OPENMPTARGET_GCC
     offset = 13;
@@ -161,7 +134,8 @@ struct TestRange {
   KOKKOS_INLINE_FUNCTION
   void operator()(const VerifyInitTag &, const int i) const {
     if (i != m_flags(i)) {
-      printf("TestRange::test_for error at %d != %d\n", i, m_flags(i));
+      KOKKOS_IMPL_DO_NOT_USE_PRINTF("TestRange::test_for_error at %d != %d\n",
+                                    i, m_flags(i));
     }
   }
 
@@ -173,7 +147,8 @@ struct TestRange {
   KOKKOS_INLINE_FUNCTION
   void operator()(const VerifyResetTag &, const int i) const {
     if (2 * i != m_flags(i)) {
-      printf("TestRange::test_for error at %d != %d\n", i, m_flags(i));
+      KOKKOS_IMPL_DO_NOT_USE_PRINTF("TestRange::test_for_error at %d != %d\n",
+                                    i, m_flags(i));
     }
   }
 
@@ -185,7 +160,8 @@ struct TestRange {
   KOKKOS_INLINE_FUNCTION
   void operator()(const VerifyOffsetTag &, const int i) const {
     if (i + offset != m_flags(i)) {
-      printf("TestRange::test_for error at %d != %d\n", i + offset, m_flags(i));
+      KOKKOS_IMPL_DO_NOT_USE_PRINTF("TestRange::test_for_error at %d != %d\n",
+                                    i + offset, m_flags(i));
     }
   }
 
@@ -200,6 +176,12 @@ struct TestRange {
     Kokkos::parallel_reduce("TestKernelReduce",
                             Kokkos::RangePolicy<ExecSpace, ScheduleType>(0, N),
                             *this, total);
+    // sum( 0 .. N-1 )
+    ASSERT_EQ(size_t((N - 1) * (N) / 2), size_t(total));
+
+    Kokkos::parallel_reduce(
+        "TestKernelReduce_long",
+        Kokkos::RangePolicy<ExecSpace, ScheduleType, long>(0, N), *this, total);
     // sum( 0 .. N-1 )
     ASSERT_EQ(size_t((N - 1) * (N) / 2), size_t(total));
 
@@ -262,8 +244,9 @@ struct TestRange {
 
     if (final) {
       if (update != (i * (i + 1)) / 2) {
-        printf("TestRange::test_scan error (%d,%d) : %d != %d\n", i, m_flags(i),
-               (i * (i + 1)) / 2, update);
+        KOKKOS_IMPL_DO_NOT_USE_PRINTF(
+            "TestRange::test_scan error (%d,%d) : %d != %d\n", i, m_flags(i),
+            (i * (i + 1)) / 2, update);
       }
       result_view(i) = update;
     }
@@ -274,10 +257,11 @@ struct TestRange {
     auto const N_no_implicit_capture = N;
     using policy_t =
         Kokkos::RangePolicy<ExecSpace, Kokkos::Schedule<Kokkos::Dynamic> >;
+    int const concurrency = ExecSpace().concurrency();
 
     {
       Kokkos::View<size_t *, ExecSpace, Kokkos::MemoryTraits<Kokkos::Atomic> >
-          count("Count", ExecSpace::concurrency());
+          count("Count", concurrency);
       Kokkos::View<int *, ExecSpace> a("A", N);
 
       Kokkos::parallel_for(
@@ -298,25 +282,24 @@ struct TestRange {
           error);
       ASSERT_EQ(error, 0);
 
-      if ((ExecSpace::concurrency() > (int)1) &&
-          (N > static_cast<int>(4 * ExecSpace::concurrency()))) {
+      if ((concurrency > 1) && (N > 4 * concurrency)) {
         size_t min = N;
         size_t max = 0;
-        for (int t = 0; t < ExecSpace::concurrency(); t++) {
+        for (int t = 0; t < concurrency; t++) {
           if (count(t) < min) min = count(t);
           if (count(t) > max) max = count(t);
         }
-        ASSERT_TRUE(min < max);
+        ASSERT_LT(min, max);
 
-        // if ( ExecSpace::concurrency() > 2 ) {
-        //  ASSERT_TRUE( 2 * min < max );
+        // if ( concurrency > 2 ) {
+        //  ASSERT_LT( 2 * min, max );
         //}
       }
     }
 
     {
       Kokkos::View<size_t *, ExecSpace, Kokkos::MemoryTraits<Kokkos::Atomic> >
-          count("Count", ExecSpace::concurrency());
+          count("Count", concurrency);
       Kokkos::View<int *, ExecSpace> a("A", N);
 
       value_type sum = 0;
@@ -342,18 +325,17 @@ struct TestRange {
           error);
       ASSERT_EQ(error, 0);
 
-      if ((ExecSpace::concurrency() > (int)1) &&
-          (N > static_cast<int>(4 * ExecSpace::concurrency()))) {
+      if ((concurrency > 1) && (N > 4 * concurrency)) {
         size_t min = N;
         size_t max = 0;
-        for (int t = 0; t < ExecSpace::concurrency(); t++) {
+        for (int t = 0; t < concurrency; t++) {
           if (count(t) < min) min = count(t);
           if (count(t) > max) max = count(t);
         }
-        ASSERT_TRUE(min < max);
+        ASSERT_LT(min, max);
 
-        // if ( ExecSpace::concurrency() > 2 ) {
-        //  ASSERT_TRUE( 2 * min < max );
+        // if ( concurrency > 2 ) {
+        //  ASSERT_LT( 2 * min, max );
         //}
       }
     }
@@ -431,7 +413,8 @@ TEST(TEST_CATEGORY, range_scan) {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(0);
     f.test_scan();
   }
-#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP)
+#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP) && \
+    !defined(KOKKOS_ENABLE_SYCL)
   {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(0);
     f.test_dynamic_policy();
@@ -446,7 +429,8 @@ TEST(TEST_CATEGORY, range_scan) {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(3);
     f.test_scan();
   }
-#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP)
+#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP) && \
+    !defined(KOKKOS_ENABLE_SYCL)
   {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(3);
     f.test_dynamic_policy();
@@ -461,7 +445,8 @@ TEST(TEST_CATEGORY, range_scan) {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(1001);
     f.test_scan();
   }
-#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP)
+#if !defined(KOKKOS_ENABLE_CUDA) && !defined(KOKKOS_ENABLE_HIP) && \
+    !defined(KOKKOS_ENABLE_SYCL)
   {
     TestRange<TEST_EXECSPACE, Kokkos::Schedule<Kokkos::Dynamic> > f(1001);
     f.test_dynamic_policy();

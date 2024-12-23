@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -64,7 +64,7 @@ ComputeReactBoundary(SPARTA *sparta, int narg, char **arg) :
       char *copy = new char[n];
       strcpy(copy,&arg[iarg][2]);
       char *ptr = copy;
-      while (ptr = strtok(ptr,"/")) {
+      while ((ptr = strtok(ptr,"/")) != (char *) NULL) {
         for (int ireaction = 0; ireaction < ntotal; ireaction++) {
           reaction2col[ireaction][icol] = 0;
           if (which == REACTANT) {

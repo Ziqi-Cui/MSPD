@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -30,7 +30,7 @@ class ReactBird : public React {
   int recomb_exist(int, int);
   void ambi_check();
   virtual int attempt(Particle::OnePart *, Particle::OnePart *,
-                      double, double, double, double &, int &) = 0;
+                      double, double, double, double &, int &, double) = 0; //modify:ÃÌº”double–Œ≤Œ 
   char *reactionID(int);
   virtual double extract_tally(int);
 
@@ -39,7 +39,7 @@ class ReactBird : public React {
 
   // tallies for reactions
 
-  int *tally_reactions,*tally_reactions_all;
+  bigint *tally_reactions,*tally_reactions_all;
   int tally_flag;
 
   struct OneReaction {

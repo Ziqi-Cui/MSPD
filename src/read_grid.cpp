@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -27,6 +27,9 @@ using namespace SPARTA_NS;
 
 #define MAXLINE 256
 #define CHUNK 1024
+#define DELTA_CUSTOM 8192
+
+enum{INT,DOUBLE};                      // several files
 
 /* ---------------------------------------------------------------------- */
 
@@ -59,7 +62,48 @@ void ReadGrid::command(int narg, char **arg)
 
   grid->exist = 1;
 
-  if (narg != 1) error->all(FLERR,"Illegal read_grid command");
+  if (narg < 1) error->all(FLERR,"Illegal read_grid command");
+
+  // optional args
+
+  int iarg = 1;
+
+  ncustom = 0;
+  name_custom = NULL;
+  type_custom = NULL;
+  size_custom = NULL;
+  nvalues_custom = 0;
+
+  while (iarg < narg) {
+    if (strcmp(arg[iarg],"custom") == 0) {
+      if (iarg+4 > narg) error->all(FLERR,"Invalid read_grid command");
+
+      name_custom = (char **)
+	memory->srealloc(name_custom,(ncustom+1)*sizeof(char *),
+			 "readgrid:name_custom");
+      memory->grow(type_custom,ncustom+1,"readgrid:type_custom");
+      memory->grow(size_custom,ncustom+1,"readgrid:size_custom");
+
+      int n = strlen(arg[iarg+1]) + 1;
+      name_custom[ncustom] = new char[n];
+      strcpy(name_custom[ncustom],arg[iarg+1]);
+      if (strcmp(arg[iarg+2],"int") == 0) type_custom[ncustom] = INT;
+      else if (strcmp(arg[iarg+2],"float") == 0) type_custom[ncustom] = DOUBLE;
+      else error->all(FLERR,"Invalid read_grid command");
+      size_custom[ncustom] = input->inumeric(FLERR,arg[iarg+3]);
+      if (size_custom[ncustom] < 0)
+	error->all(FLERR,"Invalid read_surf command");
+
+      if (size_custom[ncustom] == 0) nvalues_custom++;
+      else nvalues_custom += size_custom[ncustom];
+
+      ncustom++;
+
+      iarg += 4;
+    } else error->all(FLERR,"Invalid read_grid command");
+  }
+
+  // read file
 
   read(arg[0],0);
 }
@@ -91,16 +135,26 @@ void ReadGrid::read(char *filename, int external)
   parse_keyword(1);
   if (strcmp(keyword,"Cells") != 0)
     error->all(FLERR,
-	       "Read_grid did not find Cells section of grid file");
+               "Read_grid did not find Cells section of grid file");
   read_cells();
-
-  grid->ncell = ncell;
 
   // close file
 
   if (me == 0) {
     if (compressed) pclose(fp);
     else fclose(fp);
+  }
+
+  // new per-proc grid cell count has now been set
+  // create and populate any custom per-grid vectors and arrays
+
+  if (ncustom) {
+    create_custom();
+    memory->destroy(cvalues);
+    for (int ic = 0; ic < ncustom; ic++) delete [] name_custom[ic];
+    memory->sfree(name_custom);
+    memory->destroy(type_custom);
+    memory->destroy(size_custom);
   }
 
   // invoke grid methods to complete grid setup
@@ -154,6 +208,10 @@ void ReadGrid::read_cells()
   whichproc = 0;
   bigint nread = 0;
 
+  nclocal = ncmax = 0;
+  cvalues = NULL;
+
+  bigint count = 0;
   while (nread < ncell) {
     if (ncell-nread > CHUNK) nchunk = CHUNK;
     else nchunk = ncell-nread;
@@ -161,9 +219,9 @@ void ReadGrid::read_cells()
       char *eof;
       m = 0;
       for (i = 0; i < nchunk; i++) {
-	eof = fgets(&buffer[m],MAXLINE,fp);
-	if (eof == NULL) error->one(FLERR,"Unexpected end of grid file");
-	m += strlen(&buffer[m]);
+        eof = fgets(&buffer[m],MAXLINE,fp);
+        if (eof == NULL) error->one(FLERR,"Unexpected end of grid file");
+        m += strlen(&buffer[m]);
       }
       if (buffer[m-1] != '\n') strcpy(&buffer[m++],"\n");
       m++;
@@ -171,9 +229,17 @@ void ReadGrid::read_cells()
     MPI_Bcast(&m,1,MPI_INT,0,world);
     MPI_Bcast(buffer,m,MPI_CHAR,0,world);
 
+    // add occasional barrier to prevent issues from having too many
+    //  outstanding MPI recv requests (from the broadcast above)
+
+    if (count % 1024 == 0) MPI_Barrier(world);
+
     create_cells(nchunk,buffer);
     nread += nchunk;
+    count++;
   }
+
+  grid->ncell = ncell;
 
   if (me == 0) {
     if (screen) fprintf(screen,"  " BIGINT_FORMAT " grid cells\n",grid->ncell);
@@ -192,30 +258,134 @@ void ReadGrid::create_cells(int n, char *buf)
   char *next,*idptr;
   double lo[3],hi[3];
 
-  double *boxlo = domain->boxlo;
-  double *boxhi = domain->boxhi;
+  // nwords_required = # of words per line
+
+  int nwords_required = 1 + nvalues_custom;
+  double *custom = new double[nvalues_custom];
 
   // create one child cell for each line
   // assign to procs in round-robin fasion
 
-  for (int i = 0; i < n; i++) {
+  double *boxlo = domain->boxlo;
+  double *boxhi = domain->boxhi;
+
+  int i,ic,iv,icvalue;
+
+  for (i = 0; i < n; i++) {
     next = strchr(buf,'\n');
 
     if (me == whichproc) {
+      *next = '\0';
+      int nwords = input->count_words(buf);
+      *next = '\n';
+
+      if (nwords != nwords_required)
+	error->one(FLERR,"Incorrect line format in grid file");
+
       idptr = strtok(buf," \t\n\r\f");
       id = ATOCELLINT(idptr);
       if (id < 0) error->all(FLERR,"Invalid cell ID in grid file");
+
+      if (ncustom) {
+	icvalue = 0;
+	for (ic = 0; ic < ncustom; ic++) {
+	  if (type_custom[ic] == INT) {
+	    if (size_custom[ic] == 0)
+	      custom[icvalue++] = input->inumeric(FLERR,strtok(NULL," \t\n\r\f"));
+	    else
+	      for (iv = 0; iv < size_custom[ic]; iv++)
+		custom[icvalue++] = input->inumeric(FLERR,strtok(NULL," \t\n\r\f"));
+	  } else if (type_custom[ic] == DOUBLE) {
+            if (size_custom[ic] == 0)
+              custom[icvalue++] = input->numeric(FLERR,strtok(NULL," \t\n\r\f"));
+            else
+              for (iv = 0; iv < size_custom[ic]; iv++)
+	      custom[icvalue++] = input->numeric(FLERR,strtok(NULL," \t\n\r\f"));
+          }
+        }
+      }
 
       level = grid->id_level(id);
       if (level < 0) error->one(FLERR,"Cell ID in grid file exceeds maxlevel");
       grid->id_lohi(id,level,boxlo,boxhi,lo,hi);
       grid->add_child_cell(id,level,lo,hi);
+      add_custom(custom);
     }
 
     whichproc++;
     if (whichproc == nprocs) whichproc = 0;
 
     buf = next + 1;
+  }
+
+  // clean up custom value storage
+
+  delete [] custom;
+}
+
+/* ----------------------------------------------------------------------
+   append custom values for one grid cell to cvalues array
+   grow cvalues as needed
+------------------------------------------------------------------------- */
+
+void ReadGrid::add_custom(double *custom)
+{
+  if (nclocal == ncmax) {
+    ncmax += DELTA_CUSTOM;
+    memory->grow(cvalues,ncmax,nvalues_custom,"readgrid:cvalues");
+  }
+
+  for (int ivalue = 0; ivalue < nvalues_custom; ivalue++)
+    cvalues[nclocal][ivalue] = custom[ivalue];
+
+  nclocal++;
+}
+
+/* ----------------------------------------------------------------------
+   create custom per-grid vectors and arrays
+   cannot be done until after grid file is read and grid->nlocal is valid
+     b/c grid->add_custom() uses nlocal to allocate per-grid vector/array
+   populate each vector or array with read-in cvalues
+------------------------------------------------------------------------- */
+
+void ReadGrid::create_custom()
+{
+  int i,j,index;
+
+  int nlocal = grid->nlocal;
+  int icvalue = 0;
+
+  for (int ic = 0; ic < ncustom; ic++) {
+    index = grid->add_custom(name_custom[ic],type_custom[ic],size_custom[ic]);
+
+    if (type_custom[ic] == INT) {
+      if (size_custom[ic] == 0) {
+	int *ivector = grid->eivec[grid->ewhich[index]];
+	for (i = 0; i < nlocal; i++)
+	  ivector[i] = static_cast<int> (cvalues[i][icvalue]);
+	icvalue++;
+      } else {
+	int **iarray = grid->eiarray[grid->ewhich[index]];
+	for (i = 0; i < nlocal; i++)
+	  for (j = 0; j < size_custom[ic]; j++)
+	    iarray[i][j] = static_cast<int> (cvalues[i][icvalue+j]);
+	icvalue += size_custom[ic];
+      }
+
+    } else if (type_custom[ic] == DOUBLE) {
+      if (size_custom[ic] == 0) {
+	double *dvector = grid->edvec[grid->ewhich[index]];
+	for (i = 0; i < nlocal; i++)
+	  dvector[i] = cvalues[i][icvalue];
+	icvalue++;
+      } else {
+	double **darray = grid->edarray[grid->ewhich[index]];
+	for (i = 0; i < nlocal; i++)
+	  for (j = 0; j < size_custom[ic]; j++)
+	    darray[i][j] = cvalues[i][icvalue+j];
+	icvalue += size_custom[ic];
+      }
+    }
   }
 }
 
@@ -306,7 +476,8 @@ void ReadGrid::header()
       sscanf(line,"%d",&nlevels);
       if (nlevels <= 0) error->all(FLERR,"Grid file levels must be > 0");
       if (nlevels > grid->plevel_limit)
-	error->all(FLERR,"Grid file levels exceeds MAXLEVEL");
+        error->all(FLERR,"Grid file levels exceeds MAXLEVEL");
+      delete [] levels;
       levels = new Level[nlevels];
       for (int i = 0; i < nlevels; i++) levels[i].setflag = 0;
     } else if (strstr(line,"level-")) {
@@ -315,10 +486,10 @@ void ReadGrid::header()
       ptr += strlen("level-");
       ilevel = atoi(ptr);
       if (ilevel < 1 || ilevel > nlevels)
-	error->all(FLERR,"Grid file level-N is invalid");
+        error->all(FLERR,"Grid file level-N is invalid");
       sscanf(line,"%d %d %d",&nx,&ny,&nz);
       if (levels[ilevel-1].setflag == 1)
-	error->all(FLERR,"Grid file level-N is already set");
+        error->all(FLERR,"Grid file level-N is already set");
       levels[ilevel-1].setflag = 1;
       levels[ilevel-1].cx = nx;
       levels[ilevel-1].cy = ny;
@@ -329,7 +500,7 @@ void ReadGrid::header()
   // error checks
 
   if (ncell == 0) error->all(FLERR,"Grid file does not set cells keyword");
-  if (nlevels == 0) error->all(FLERR,"Grid file does not set nlevels keyword");
+  if (nlevels == 0) error->all(FLERR,"Grid file does not set levels keyword");
   for (int i = 0; i < nlevels; i++) {
     if (!levels[i].setflag) error->all(FLERR,"Grid file does not set all levels");
     if (domain->dimension == 2 && levels[i].cz != 1)
@@ -364,7 +535,7 @@ void ReadGrid::header()
   if (nbits > sizeof(cellint)*8) {
     char str[128];
     sprintf(str,"Hierarchical grid induces cell IDs that exceed %d bits",
-	    (int) sizeof(cellint)*8);
+            (int) sizeof(cellint)*8);
     error->all(FLERR,str);
   }
 
@@ -419,7 +590,7 @@ void ReadGrid::parse_keyword(int first)
   int start = strspn(line," \t\n\r");
   int stop = strlen(line) - 1;
   while (line[stop] == ' ' || line[stop] == '\t'
-	 || line[stop] == '\n' || line[stop] == '\r') stop--;
+         || line[stop] == '\n' || line[stop] == '\r') stop--;
   line[stop+1] = '\0';
   strcpy(keyword,&line[start]);
 }

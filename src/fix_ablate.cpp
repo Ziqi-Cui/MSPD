@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -24,19 +24,19 @@
 #include "compute.h"
 #include "fix.h"
 #include "output.h"
+#include "input.h"
+#include "variable.h"
 #include "dump.h"
-#include "cut2d.h"     // remove if fix particles-inside-surfs issue
-#include "cut3d.h"
 #include "marching_squares.h"
 #include "marching_cubes.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "memory.h"
 #include "error.h"
 
 using namespace SPARTA_NS;
 
-enum{COMPUTE,FIX,RANDOM};
+enum{COMPUTE,FIX,VARIABLE,RANDOM};
 enum{CVALUE,CDELTA};
 
 #define INVOKED_PER_GRID 16
@@ -105,6 +105,13 @@ FixAblate::FixAblate(SPARTA *sparta, int narg, char **arg) :
     strcpy(idsource,suffix);
     delete [] suffix;
 
+  } else if (strncmp(arg[5],"v_",2) == 0) {
+    which = VARIABLE;
+
+    int n = strlen(arg[5]);
+    char *idsource = new char[n];
+    strcpy(idsource,&arg[5][2]);
+
   } else if (strcmp(arg[5],"random") == 0) {
     if (narg != 7) error->all(FLERR,"Illegal fix ablate command");
     which = RANDOM;
@@ -151,6 +158,13 @@ FixAblate::FixAblate(SPARTA *sparta, int narg, char **arg) :
     if (nevery % modify->fix[ifix]->per_grid_freq)
       error->all(FLERR,
                  "Fix for fix ablate not computed at compatible time");
+
+  } else if (which == VARIABLE) {
+    ivariable = input->variable->find(idsource);
+    if (ivariable < 0)
+      error->all(FLERR,"Could not find fix ablate variable name");
+    if (input->variable->grid_style(ivariable) == 0)
+      error->all(FLERR,"Fix ablate variable is not grid-style variable");
   }
 
   // this fix produces a per-grid array and a scalar
@@ -192,6 +206,9 @@ FixAblate::FixAblate(SPARTA *sparta, int narg, char **arg) :
   sbuf = NULL;
   maxbuf = 0;
 
+  vbuf = NULL;
+  maxvar = 0;
+
   ms = NULL;
   mc = NULL;
 
@@ -202,7 +219,7 @@ FixAblate::FixAblate(SPARTA *sparta, int narg, char **arg) :
 
   random = NULL;
   if (which == RANDOM) {
-    random = new RanPark(update->ranmaster->uniform());
+    random = new RanKnuth(update->ranmaster->uniform());
     //double seed = update->ranmaster->uniform();
     //random->reset(seed,comm->me,100);
   }
@@ -237,6 +254,7 @@ FixAblate::~FixAblate()
   memory->destroy(locallist);
 
   memory->destroy(sbuf);
+  memory->destroy(vbuf);
 
   delete ms;
   delete mc;
@@ -290,7 +308,6 @@ void FixAblate::store_corners(int nx_caller, int ny_caller, int nz_caller,
 
   Grid::ChildCell *cells = grid->cells;
   Grid::ChildInfo *cinfo = grid->cinfo;
-  Grid::SplitInfo *sinfo = grid->sinfo;
   nglocal = grid->nlocal;
 
   grow_percell(0);
@@ -351,6 +368,10 @@ void FixAblate::init()
     ifix = modify->find_fix(idsource);
     if (ifix < 0)
       error->all(FLERR,"Fix ID for fix ablate does not exist");
+  } else if (which == VARIABLE) {
+    ivariable = input->variable->find(idsource);
+    if (ivariable < 0)
+      error->all(FLERR,"Variable ID for fix ablate does not exist");
   }
 
   // reallocate per-grid data if necessary
@@ -404,7 +425,7 @@ void FixAblate::create_surfs(int outflag)
     Grid::ChildCell *cells = grid->cells;
     for (int icell = 0; icell < nglocal; icell++)
       if (cells[icell].nsplit > 1)
-	grid->combine_split_cell_particles(icell,1);
+        grid->combine_split_cell_particles(icell,1);
   }
 
   // call clear_surf before create new surfs, so cell/corner flags are all set
@@ -412,7 +433,7 @@ void FixAblate::create_surfs(int outflag)
   grid->unset_neighbors();
   grid->remove_ghosts();
   grid->clear_surf();
-  surf->clear();
+  surf->clear_implicit();
 
   // perform Marching Squares/Cubes to create new implicit surfs
   // cvalues = corner point values
@@ -534,7 +555,7 @@ void FixAblate::create_surfs(int outflag)
     Grid::ChildCell *cells = grid->cells;
     for (int icell = 0; icell < nglocal; icell++)
       if (cells[icell].nsplit > 1)
-	grid->assign_split_cell_particles(icell);
+        grid->assign_split_cell_particles(icell);
     particle->sorted = 0;
   }
 
@@ -570,18 +591,15 @@ void FixAblate::create_surfs(int outflag)
   //         after ablation
   // similar code as in fix grid/check
 
-  Cut3d *cut3d = new Cut3d(sparta);
-  Cut2d *cut2d = NULL;
-
   Grid::ChildCell *cells = grid->cells;
-  Grid::ChildInfo *cinfo = grid->cinfo;
   Grid::SplitInfo *sinfo = grid->sinfo;
   Particle::OnePart *particles = particle->particles;
   int pnlocal = particle->nlocal;
 
   int ncount;
-  int icell,splitcell,subcell,flag;
+  int icell,splitcell,subcell,pflag;
   double *x;
+  double xcell[3];
 
   ncount = 0;
   for (int i = 0; i < pnlocal; i++) {
@@ -589,15 +607,27 @@ void FixAblate::create_surfs(int outflag)
     icell = particles[i].icell;
     if (cells[icell].nsurf == 0) continue;
 
-    int mcell = icell;
     x = particles[i].x;
-    flag = 1;
-    if (cells[icell].nsplit <= 0) {
-      mcell = splitcell = sinfo[cells[icell].isplit].icell;
-      flag = grid->outside_surfs(splitcell,x,cut3d,cut2d);
-    } else flag = grid->outside_surfs(icell,x,cut3d,cut2d);
 
-    if (!flag) {
+    // check that particle is outside surfs
+    // if no xcell found, cannot check
+
+    pflag = grid->point_outside_surfs(icell,xcell);
+    if (!pflag) continue;
+    pflag = grid->outside_surfs(icell,x,xcell);
+
+    // check that particle is in correct split subcell
+
+    if (pflag && cells[icell].nsplit <= 0) {
+      splitcell = sinfo[cells[icell].isplit].icell;
+      if (dim == 2) subcell = update->split2d(splitcell,x);
+      else subcell = update->split3d(splitcell,x);
+      if (subcell != icell) pflag = 0;
+    }
+
+    // discard the particle if either test failed
+
+    if (!pflag) {
       particles[i].flag = PDISCARD;
       // DEBUG - print message about MC flags for cell of deleted particle
       /*
@@ -627,7 +657,6 @@ void FixAblate::create_surfs(int outflag)
     }
   }
 
-  delete cut3d;
   memory->destroy(mcflags_old);
 
   // compress out the deleted particles
@@ -693,9 +722,9 @@ void FixAblate::set_delta_random()
 }
 
 /* ----------------------------------------------------------------------
-   set per-cell delta vector from compute/fix source
+   set per-cell delta vector from compute/fix/variable source
    celldelta = nevery * scale * source-value
-   // NOTE: how does this work for split cells? should only do parent split?
+   NOTE: how does this work for split cells? should only do parent split?
 ------------------------------------------------------------------------- */
 
 void FixAblate::set_delta()
@@ -742,6 +771,17 @@ void FixAblate::set_delta()
       for (i = 0; i < nglocal; i++)
         celldelta[i] = prefactor * farray[i][im1];
     }
+
+  } else if (which == VARIABLE) {
+    if (nglocal > maxvar) {
+      maxvar = grid->maxlocal;
+      memory->destroy(vbuf);
+      memory->create(vbuf,maxvar,"ablate:vbuf");
+    }
+
+    input->variable->compute_grid(ivariable,vbuf,1,0);
+    for (i = 0; i < nglocal; i++)
+      celldelta[i] = prefactor * vbuf[i];
   }
 
   // NOTE: this does not get invoked on step 100,
@@ -1052,7 +1092,7 @@ void FixAblate::push_lohi()
 
 void FixAblate::comm_neigh_corners(int which)
 {
-  int i,j,m,n,ix,iy,iz,ixfirst,iyfirst,izfirst,jx,jy,jz;
+  int i,j,m,n,ix,iy,iz,jx,jy,jz;
   int icell,ifirst,jcell,proc,ilocal;
 
   Grid::ChildCell *cells = grid->cells;
@@ -1104,9 +1144,7 @@ void FixAblate::comm_neigh_corners(int which)
             if (j == nsend) {
               if (nsend == maxsend) grow_send();
               proclist[nsend] = proc;
-              // NOTE: change locallist to another name
-              // NOTE: what about cellint vs int
-              locallist[nsend++] = cells[icell].id;   // no longer an int
+              locallist[nsend++] = cells[icell].id;
             }
           }
         }
@@ -1141,7 +1179,7 @@ void FixAblate::comm_neigh_corners(int which)
 
     n = numsend[icell];
     for (i = 0; i < n; i++) {
-      sbuf[m++] = locallist[nsend];
+      sbuf[m++] = ubuf(locallist[nsend]).d;
       if (which == CDELTA) {
         for (j = 0; j < ncorner; j++)
           sbuf[m++] = cdelta[icell][j];
@@ -1177,7 +1215,7 @@ void FixAblate::comm_neigh_corners(int which)
 
   m = 0;
   for (i = 0; i < nrecv; i++) {
-    cellID = static_cast<cellint> (rbuf[m++]);   // NOTE: need ubuf logic
+    cellID = (cellint) ubuf(rbuf[m++]).u;
     ilocal = (*hash)[cellID];
     icell = ilocal - nglocal;
     for (j = 0; j < ncorner; j++)

@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #ifndef KOKKOS_HOST_EXP_ITERATE_TILE_HPP
 #define KOKKOS_HOST_EXP_ITERATE_TILE_HPP
@@ -1366,9 +1338,8 @@ struct Tile_Loop_Type<8, IsLeft, IType, void, void> {
 // tagged versions
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    1, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<1, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1385,9 +1356,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    2, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<2, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1404,9 +1374,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    3, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<3, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1423,9 +1392,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    4, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<4, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1442,9 +1410,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    5, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<5, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1461,9 +1428,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    6, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<6, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1480,9 +1446,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    7, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<7, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1499,9 +1464,8 @@ struct Tile_Loop_Type<
 };
 
 template <bool IsLeft, typename IType, typename Tagged>
-struct Tile_Loop_Type<
-    8, IsLeft, IType, Tagged,
-    typename std::enable_if<!std::is_same<Tagged, void>::value>::type> {
+struct Tile_Loop_Type<8, IsLeft, IType, Tagged,
+                      std::enable_if_t<!std::is_void<Tagged>::value>> {
   template <typename Func, typename Offset, typename ExtentA, typename ExtentB>
   static void apply(Func const& func, bool cond, Offset const& offset,
                     ExtentA const& a, ExtentB const& b) {
@@ -1518,28 +1482,14 @@ struct Tile_Loop_Type<
 };
 // end Structs for calling loops
 
-template <typename T>
-using is_void_type = std::is_same<T, void>;
-
-template <typename T>
-struct is_type_array : std::false_type {
-  using value_type = T;
-};
-
-template <typename T>
-struct is_type_array<T[]> : std::true_type {
-  using value_type = T;
-};
-
 template <typename RP, typename Functor, typename Tag = void,
           typename ValueType = void, typename Enable = void>
 struct HostIterateTile;
 
 // For ParallelFor
 template <typename RP, typename Functor, typename Tag, typename ValueType>
-struct HostIterateTile<
-    RP, Functor, Tag, ValueType,
-    typename std::enable_if<is_void_type<ValueType>::value>::type> {
+struct HostIterateTile<RP, Functor, Tag, ValueType,
+                       std::enable_if_t<std::is_void<ValueType>::value>> {
   using index_type = typename RP::index_type;
   using point_type = typename RP::point_type;
 
@@ -1582,7 +1532,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1600,7 +1550,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    Tile_Loop_Type<RP::rank, (RP::inner_direction == RP::Left), index_type,
+    Tile_Loop_Type<RP::rank, (RP::inner_direction == Iterate::Left), index_type,
                    Tag>::apply(m_func, full_tile, m_offset, m_rp.m_tile,
                                m_tiledims);
   }
@@ -1618,7 +1568,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1636,7 +1586,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
@@ -1644,7 +1594,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1653,7 +1603,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2R(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 2
 
@@ -1662,7 +1612,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1680,7 +1630,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
@@ -1688,7 +1638,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1697,7 +1647,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3R(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 3
 
@@ -1706,7 +1656,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1724,7 +1674,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
@@ -1732,7 +1682,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1741,7 +1691,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4R(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 4
 
@@ -1750,7 +1700,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1768,7 +1718,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
@@ -1776,7 +1726,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1785,7 +1735,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5R(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 5
 
@@ -1794,7 +1744,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1812,7 +1762,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
@@ -1820,7 +1770,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1829,7 +1779,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6R(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 6
 
@@ -1838,7 +1788,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1856,7 +1806,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
@@ -1864,7 +1814,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1873,7 +1823,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7R(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 7
 
@@ -1882,7 +1832,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -1900,7 +1850,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
@@ -1908,7 +1858,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -1917,51 +1867,45 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8R(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 8
 #endif
 
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(args...);
   }
 
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           !std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && !std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(m_tag, args...);
   }
 
-  RP const& m_rp;
-  Functor const& m_func;
-  typename std::conditional<std::is_same<Tag, void>::value, int, Tag>::type
-      m_tag;
+  RP const m_rp;
+  Functor const m_func;
+  std::conditional_t<std::is_void<Tag>::value, int, Tag> m_tag;
 };
 
 // For ParallelReduce
 // ValueType - scalar: For reductions
 template <typename RP, typename Functor, typename Tag, typename ValueType>
-struct HostIterateTile<
-    RP, Functor, Tag, ValueType,
-    typename std::enable_if<!is_void_type<ValueType>::value &&
-                            !is_type_array<ValueType>::value>::type> {
+struct HostIterateTile<RP, Functor, Tag, ValueType,
+                       std::enable_if_t<!std::is_void<ValueType>::value &&
+                                        !std::is_array<ValueType>::value>> {
   using index_type = typename RP::index_type;
   using point_type = typename RP::point_type;
 
   using value_type = ValueType;
 
-  inline HostIterateTile(RP const& rp, Functor const& func, value_type& v)
+  inline HostIterateTile(RP const& rp, Functor const& func)
       : m_rp(rp)  // Cuda 7.0 does not like braces...
         ,
-        m_func(func),
-        m_v(v)  // use with non-void ValueType struct
-  {
+        m_func(func) {
     // Errors due to braces rather than parenthesis for init (with cuda 7.0)
     //      /home/ndellin/kokkos/core/src/impl/KokkosExp_Host_IterateTile.hpp:1216:98:
     //      error: too many braces around initializer for ‘int’ [-fpermissive]
@@ -1999,11 +1943,11 @@ struct HostIterateTile<
 
 #if KOKKOS_ENABLE_NEW_LOOP_MACROS
   template <typename IType>
-  inline void operator()(IType tile_idx) const {
+  inline void operator()(IType tile_idx, value_type& val) const {
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2021,8 +1965,8 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    Tile_Loop_Type<RP::rank, (RP::inner_direction == RP::Left), index_type,
-                   Tag>::apply(m_v, m_func, full_tile, m_offset, m_rp.m_tile,
+    Tile_Loop_Type<RP::rank, (RP::inner_direction == Iterate::Left), index_type,
+                   Tag>::apply(val, m_func, full_tile, m_offset, m_rp.m_tile,
                                m_tiledims);
   }
 
@@ -2039,7 +1983,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2057,7 +2001,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
@@ -2065,7 +2009,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2074,7 +2018,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2R(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 2
 
@@ -2083,7 +2027,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2101,7 +2045,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
@@ -2109,7 +2053,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2118,7 +2062,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3R(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 3
 
@@ -2127,7 +2071,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2145,7 +2089,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
@@ -2153,7 +2097,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2162,7 +2106,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4R(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 4
 
@@ -2171,7 +2115,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2189,7 +2133,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
@@ -2197,7 +2141,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2206,7 +2150,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5R(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 5
 
@@ -2215,7 +2159,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2233,7 +2177,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
@@ -2241,7 +2185,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2250,7 +2194,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6R(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 6
 
@@ -2259,7 +2203,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2277,7 +2221,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
@@ -2285,7 +2229,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2294,7 +2238,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7R(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 7
 
@@ -2303,7 +2247,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2321,7 +2265,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
@@ -2329,7 +2273,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2338,59 +2282,49 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8R(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 8
-#endif
 
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(args..., m_v);
   }
 
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           !std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && !std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(m_tag, args..., m_v);
   }
+#endif
 
-  RP const& m_rp;
-  Functor const& m_func;
-  value_type& m_v;
-  typename std::conditional<std::is_same<Tag, void>::value, int, Tag>::type
-      m_tag;
+  RP const m_rp;
+  Functor const m_func;
+  std::conditional_t<std::is_void<Tag>::value, int, Tag> m_tag;
 };
 
 // For ParallelReduce
 // Extra specialization for array reductions
 // ValueType[]: For array reductions
 template <typename RP, typename Functor, typename Tag, typename ValueType>
-struct HostIterateTile<
-    RP, Functor, Tag, ValueType,
-    typename std::enable_if<!is_void_type<ValueType>::value &&
-                            is_type_array<ValueType>::value>::type> {
+struct HostIterateTile<RP, Functor, Tag, ValueType,
+                       std::enable_if_t<!std::is_void<ValueType>::value &&
+                                        std::is_array<ValueType>::value>> {
   using index_type = typename RP::index_type;
   using point_type = typename RP::point_type;
 
   using value_type =
-      typename is_type_array<ValueType>::value_type;  // strip away the
-                                                      // 'array-ness' [], only
-                                                      // underlying type remains
+      std::remove_extent_t<ValueType>;  // strip away the
+                                        // 'array-ness' [], only
+                                        // underlying type remains
 
-  inline HostIterateTile(
-      RP const& rp, Functor const& func,
-      value_type* v)  // v should be an array; treat as pointer for
-                      // compatibility since size is not known nor needed here
-      : m_rp(rp)      // Cuda 7.0 does not like braces...
+  inline HostIterateTile(RP const& rp, Functor const& func)
+      : m_rp(rp)  // Cuda 7.0 does not like braces...
         ,
-        m_func(func),
-        m_v(v)  // use with non-void ValueType struct
-  {}
+        m_func(func) {}
 
   inline bool check_iteration_bounds(point_type& partial_tile,
                                      point_type& offset) const {
@@ -2422,11 +2356,11 @@ struct HostIterateTile<
 
 #if KOKKOS_ENABLE_NEW_LOOP_MACROS
   template <typename IType>
-  inline void operator()(IType tile_idx) const {
+  inline void operator()(IType tile_idx, value_type* val) const {
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2444,8 +2378,8 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    Tile_Loop_Type<RP::rank, (RP::inner_direction == RP::Left), index_type,
-                   Tag>::apply(m_v, m_func, full_tile, m_offset, m_rp.m_tile,
+    Tile_Loop_Type<RP::rank, (RP::inner_direction == Iterate::Left), index_type,
+                   Tag>::apply(val, m_func, full_tile, m_offset, m_rp.m_tile,
                                m_tiledims);
   }
 
@@ -2462,7 +2396,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2480,7 +2414,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
@@ -2488,7 +2422,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2L(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2497,7 +2431,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_2R(index_type, m_tiledims) { apply(LOOP_ARGS_2); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 2
 
@@ -2506,7 +2440,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2524,7 +2458,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
@@ -2532,7 +2466,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3L(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2541,7 +2475,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_3R(index_type, m_tiledims) { apply(LOOP_ARGS_3); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 3
 
@@ -2550,7 +2484,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2568,7 +2502,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
@@ -2576,7 +2510,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4L(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2585,7 +2519,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_4R(index_type, m_tiledims) { apply(LOOP_ARGS_4); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 4
 
@@ -2594,7 +2528,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2612,7 +2546,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
@@ -2620,7 +2554,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5L(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2629,7 +2563,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_5R(index_type, m_tiledims) { apply(LOOP_ARGS_5); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 5
 
@@ -2638,7 +2572,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2656,7 +2590,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
@@ -2664,7 +2598,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6L(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2673,7 +2607,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_6R(index_type, m_tiledims) { apply(LOOP_ARGS_6); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 6
 
@@ -2682,7 +2616,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2700,7 +2634,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
@@ -2708,7 +2642,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7L(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2717,7 +2651,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_7R(index_type, m_tiledims) { apply(LOOP_ARGS_7); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 7
 
@@ -2726,7 +2660,7 @@ struct HostIterateTile<
     point_type m_offset;
     point_type m_tiledims;
 
-    if (RP::outer_direction == RP::Left) {
+    if (RP::outer_direction == Iterate::Left) {
       for (int i = 0; i < RP::rank; ++i) {
         m_offset[i] =
             (tile_idx % m_rp.m_tile_end[i]) * m_rp.m_tile[i] + m_rp.m_lower[i];
@@ -2744,7 +2678,7 @@ struct HostIterateTile<
     // partial tile dims
     const bool full_tile = check_iteration_bounds(m_tiledims, m_offset);
 
-    if (RP::inner_direction == RP::Left) {
+    if (RP::inner_direction == Iterate::Left) {
       if (full_tile) {
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
@@ -2752,7 +2686,7 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8L(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Left
+    }  // end Iterate::Left
     else {
       if (full_tile) {
         //      #pragma simd
@@ -2761,32 +2695,27 @@ struct HostIterateTile<
         //      #pragma simd
         LOOP_8R(index_type, m_tiledims) { apply(LOOP_ARGS_8); }
       }
-    }  // end RP::Right
+    }  // end Iterate::Right
 
   }  // end op() rank == 8
-#endif
-
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(args..., m_v);
   }
 
   template <typename... Args>
-  typename std::enable_if<(sizeof...(Args) == RP::rank &&
-                           !std::is_same<Tag, void>::value),
-                          void>::type
+  std::enable_if_t<(sizeof...(Args) == RP::rank && !std::is_void<Tag>::value),
+                   void>
   apply(Args&&... args) const {
     m_func(m_tag, args..., m_v);
   }
+#endif
 
-  RP const& m_rp;
-  Functor const& m_func;
-  value_type* m_v;
-  typename std::conditional<std::is_same<Tag, void>::value, int, Tag>::type
-      m_tag;
+  RP const m_rp;
+  Functor const m_func;
+  std::conditional_t<std::is_void<Tag>::value, int, Tag> m_tag;
 };
 
 // ------------------------------------------------------------------ //

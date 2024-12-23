@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -53,7 +53,7 @@ class FixAblate : public Fix {
 
  protected:
   int me;
-  int groupbit,which,argindex,icompute,ifix,maxrandom;
+  int groupbit,which,argindex,icompute,ifix,ivariable,maxrandom;
   double scale;
   char *idsource;
   int storeflag;
@@ -88,9 +88,12 @@ class FixAblate : public Fix {
   double *sbuf;
   int maxbuf;
 
+  double *vbuf;
+  int maxvar;
+
   class MarchingSquares *ms;
   class MarchingCubes *mc;
-  class RanPark *random;
+  class RanKnuth *random;
 
   void create_surfs(int);
   void set_delta_random();

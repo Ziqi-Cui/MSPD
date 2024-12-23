@@ -9,7 +9,7 @@ struct ExclScan {
   using total_type = Kokkos::View<int, Device>;
   KOKKOS_INLINE_FUNCTION void init(value_type& update) const { update = 0; }
   KOKKOS_INLINE_FUNCTION void join(
-      volatile value_type& update, const volatile value_type& input) const {
+      value_type& update, const value_type& input) const {
     update = update + input;
   }
   view_type in_;
@@ -40,7 +40,7 @@ Kokkos::View<int*, Device> offset_scan(Kokkos::View<int*, Device> in, int& total
     out = Kokkos::View<int*, Device>(Kokkos::view_alloc(in.label() + "_scan",Kokkos::WithoutInitializing), in.size() + 1);
     Kokkos::View<int, Device> total_dev(Kokkos::view_alloc("scan_total",Kokkos::WithoutInitializing));
     typename Kokkos::View<int, Device>::HostMirror total_host(Kokkos::view_alloc("scan_total_mirror",Kokkos::WithoutInitializing));
-    parallel_scan(in.size(), ExclScan<Device>(in, out, total_dev));
+    Kokkos::parallel_scan(in.size(), ExclScan<Device>(in, out, total_dev));
     Kokkos::deep_copy(total_host, total_dev);
     total = total_host();
   }
@@ -49,7 +49,7 @@ Kokkos::View<int*, Device> offset_scan(Kokkos::View<int*, Device> in, int& total
 
 template Kokkos::View<int*, SPAHostType> offset_scan(
     Kokkos::View<int*, SPAHostType> in, int& total);
-#ifdef KOKKOS_ENABLE_CUDA
+#ifdef SPARTA_KOKKOS_GPU
 template Kokkos::View<int*, DeviceType> offset_scan(
     Kokkos::View<int*, DeviceType> in, int& total);
 #endif

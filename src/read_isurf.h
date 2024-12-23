@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -88,7 +88,7 @@ class ReadISurf : protected Pointers {
   void read_corners_serial(char *);
   void assign_corners(int, bigint, uint8_t *, double *);
   void read_types_serial(char *);
-  void assign_types(int, bigint, int *);
+  void assign_types(int, bigint, uint8_t *);
 
   void read_corners_parallel(char *);
 

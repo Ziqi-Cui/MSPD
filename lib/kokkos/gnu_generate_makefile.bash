@@ -29,11 +29,28 @@ do
       KOKKOS_DEVICES="${KOKKOS_DEVICES},Cuda"
       CUDA_PATH="${key#*=}"
       ;;
+    --with-hip)
+      KOKKOS_DEVICES="${KOKKOS_DEVICES},Hip"
+      HIP_PATH_HIPCC=$(command -v hipcc)
+      HIP_PATH=${HIP_PATH_HIPCC%/bin/hipcc}
+      ;;
+    # Catch this before '--with-hip*'
+    --with-hip-options*)
+      KOKKOS_HIP_OPT="${key#*=}"
+      ;;
+    --with-hip*)
+      KOKKOS_DEVICES="${KOKKOS_DEVICES},Hip"
+      HIP_PATH="${key#*=}"
+      ;;
     --with-openmp)
       KOKKOS_DEVICES="${KOKKOS_DEVICES},OpenMP"
       ;;
     --with-pthread)
       KOKKOS_DEVICES="${KOKKOS_DEVICES},Pthread"
+      echo "warning: The --with-pthread option is deprecated. Use --with-threads instead!"
+      ;;
+    --with-threads)
+      KOKKOS_DEVICES="${KOKKOS_DEVICES},Threads"
       ;;
     --with-serial)
       KOKKOS_DEVICES="${KOKKOS_DEVICES},Serial"
@@ -81,7 +98,7 @@ do
       ;;
     --compiler*)
       COMPILER="${key#*=}"
-      CNUM=$(command -v ${COMPILER} 2>&1 >/dev/null | grep "no ${COMPILER}" | wc -l)
+      CNUM=$(command -v ${COMPILER} 2>&1 >/dev/null | grep -c "no ${COMPILER}")
       if [ ${CNUM} -gt 0 ]; then
         echo "Invalid compiler by --compiler command: '${COMPILER}'"
         exit
@@ -90,7 +107,7 @@ do
         echo "Empty compiler specified by --compiler command."
         exit
       fi
-      CNUM=$(command -v ${COMPILER} | grep ${COMPILER} | wc -l)
+      CNUM=$(command -v ${COMPILER} | grep -c ${COMPILER})
       if [ ${CNUM} -eq 0 ]; then
         echo "Invalid compiler by --compiler command: '${COMPILER}'"
         exit
@@ -115,7 +132,7 @@ do
       echo ""
       echo "--with-cuda[=/Path/To/Cuda]:          Enable Cuda and set path to Cuda Toolkit."
       echo "--with-openmp:                        Enable OpenMP backend."
-      echo "--with-pthread:                       Enable Pthreads backend."
+      echo "--with-threads:                       Enable Threads backend."
       echo "--with-serial:                        Enable Serial backend."
       echo "--with-devices:                       Explicitly add a set of backends."
       echo ""
@@ -124,6 +141,7 @@ do
       echo "                 AMDAVX          = AMD CPU"
       echo "                 ZEN             = AMD Zen-Core CPU"
       echo "                 ZEN2            = AMD Zen2-Core CPU"
+      echo "                 ZEN3            = AMD Zen3-Core CPU"
       echo "               [ARM]"
       echo "                 ARMv80          = ARMv8.0 Compatible CPU"
       echo "                 ARMv81          = ARMv8.1 Compatible CPU"
@@ -140,9 +158,18 @@ do
       echo "                 HSW             = Intel Haswell CPUs"
       echo "                 BDW             = Intel Broadwell Xeon E-class CPUs"
       echo "                 SKX             = Intel Sky Lake Xeon E-class HPC CPUs (AVX512)"
+      echo "                 ICX             = Intel Ice Lake CPUs (AVX512)"
       echo "               [Intel Xeon Phi]"
       echo "                 KNC             = Intel Knights Corner Xeon Phi"
       echo "                 KNL             = Intel Knights Landing Xeon Phi"
+      echo "               [Intel: GPU]"
+      echo "                 INTEL_GEN       = SPIR64-based devices, e.g. Intel GPUs, using JIT"
+      echo "                 INTEL_DG1       = Intel Iris XeMAX GPU"
+      echo "                 INTEL_GEN9      = Intel GPU Gen9"
+      echo "                 INTEL_GEN11     = Intel GPU Gen11"
+      echo "                 INTEL_GEN12LP   = Intel GPU Gen12LP"
+      echo "                 INTEL_XEHP      = Intel GPU Xe-HP"
+      echo "                 INTEL_PVC       = Intel GPU Ponte Vecchio"
       echo "               [NVIDIA]"
       echo "                 Kepler30        = NVIDIA Kepler generation CC 3.0"
       echo "                 Kepler32        = NVIDIA Kepler generation CC 3.2"
@@ -161,9 +188,9 @@ do
       echo "--cxxflags=[FLAGS]            Overwrite CXXFLAGS for library build and test"
       echo "                                build.  This will still set certain required"
       echo "                                flags via KOKKOS_CXXFLAGS (such as -fopenmp,"
-      echo "                                --std=c++11, etc.)."
+      echo "                                -std=c++17, etc.)."
       echo "--cxxstandard=[FLAGS]         Overwrite KOKKOS_CXX_STANDARD for library build and test"
-      echo "                                c++11 (default), c++14, c++17, c++1y, c++1z, c++2a"
+      echo "                                c++17 (default), c++1z, c++20, c++2a, c++23, c++2b"
       echo "--ldflags=[FLAGS]             Overwrite LDFLAGS for library build and test"
       echo "                                build. This will still set certain required"
       echo "                                flags via KOKKOS_LDFLAGS (such as -fopenmp,"
@@ -221,6 +248,10 @@ elif
    [ ${#COMPILER} -eq 0 ] && [[ ${KOKKOS_DEVICES} =~ .*Cuda.* ]]; then
   COMPILER="${KOKKOS_PATH}/bin/nvcc_wrapper"
   KOKKOS_SETTINGS="${KOKKOS_SETTINGS} CXX=${COMPILER}"   
+elif
+   [ ${#COMPILER} -eq 0 ] && [[ ${KOKKOS_DEVICES} =~ .*Hip.* ]]; then
+  COMPILER=hipcc
+  KOKKOS_SETTINGS="${KOKKOS_SETTINGS} CXX=${COMPILER}"
 fi
 
 if [ ${#KOKKOS_DEVICES} -gt 0 ]; then
@@ -237,6 +268,10 @@ fi
 
 if [ ${#CUDA_PATH} -gt 0 ]; then
   KOKKOS_SETTINGS="${KOKKOS_SETTINGS} CUDA_PATH=${CUDA_PATH}"
+fi
+
+if [ ${#HIP_PATH} -gt 0 ]; then
+  KOKKOS_SETTINGS="${KOKKOS_SETTINGS} HIP_PATH=${HIP_PATH}"
 fi
 
 if [ ${#CXXFLAGS} -gt 0 ]; then

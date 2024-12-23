@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -18,7 +18,7 @@
 #include "react_tce_kokkos.h"
 #include "particle.h"
 #include "collide.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "error.h"
 
 // DEBUG
@@ -41,4 +41,7 @@ void ReactTCEKokkos::init()
     error->all(FLERR,"React tce can only be used with collide vss");
 
   ReactBirdKokkos::init();
+
+  vibstyle = collide->vibstyle;
+  boltz = update->boltz;
 }

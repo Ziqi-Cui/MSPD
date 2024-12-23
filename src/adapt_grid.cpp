@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -32,7 +32,7 @@
 #include "dump.h"
 #include "write_grid.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "hashlittle.h"
 #include "my_page.h"
 #include "math_extra.h"
@@ -165,6 +165,20 @@ void AdaptGrid::command(int narg, char **arg)
     grid->type_check();
   }
 
+  // if not before first run,
+  // notify all classes that store per-grid data that grid may have changed
+
+  if (update->first_update) grid->notify_changed();
+
+  // if explicit distributed surfs
+  // set redistribute timestep and clear custom status flags
+
+  if (surf->distributed && !surf->implicit) {
+    surf->localghost_changed_step = update->ntimestep;
+    for (int i = 0; i < surf->ncustom; i++)
+      surf->estatus[i] = 0;
+  }
+
   // write out new grid file
 
   if (file) write_file();
@@ -258,10 +272,10 @@ void AdaptGrid::process_args(int narg, char **arg)
 
       char *ptr = strchr(suffix,'[');
       if (ptr) {
-	if (suffix[strlen(suffix)-1] != ']')
-	  error->all(FLERR,"Illegal adapt command");
-	valindex = atoi(ptr+1);
-	*ptr = '\0';
+        if (suffix[strlen(suffix)-1] != ']')
+          error->all(FLERR,"Illegal adapt command");
+        valindex = atoi(ptr+1);
+        *ptr = '\0';
       } else valindex = 0;
       n = strlen(suffix) + 1;
       valueID = new char[n];
@@ -352,9 +366,9 @@ void AdaptGrid::process_args(int narg, char **arg)
       if (domain->dimension == 2 && nz != 1)
         error->all(FLERR,"Adapt cells nz must be 1 for a 2d simulation");
       if (nx < 1 || ny < 1 || nz < 1)
-	error->all(FLERR,"Adapt cells nx,ny,nz cannot be < 1");
+        error->all(FLERR,"Adapt cells nx,ny,nz cannot be < 1");
       if (nx == 1 && ny == 1 && nz == 1)
-	error->all(FLERR,"Adapt cells nx,ny,nz cannot all be one");
+        error->all(FLERR,"Adapt cells nx,ny,nz cannot all be one");
       iarg += 4;
 
     } else if (strcmp(arg[iarg],"region") == 0) {
@@ -400,7 +414,7 @@ void AdaptGrid::process_args(int narg, char **arg)
 
   while (level < maxlevel) {
     if (plevels[level-1].nbits + plevels[level-1].newbits +
-	newbits > 8*sizeof(cellint)) {
+        newbits > 8*sizeof(cellint)) {
       maxlevel = level;
       break;
     }
@@ -417,7 +431,7 @@ void AdaptGrid::process_args(int narg, char **arg)
   if (maxlevel_request && maxlevel < maxlevel_request && me == 0) {
     char str[128];
     sprintf(str,"Reduced maxlevel because it induces "
-	    "cell IDs that exceed %d bits",(int) sizeof(cellint)*8);
+            "cell IDs that exceed %d bits",(int) sizeof(cellint)*8);
     error->warning(FLERR,str);
   }
 }
@@ -504,14 +518,20 @@ void AdaptGrid::setup(int iter)
   // create RNG for style = RANDOM
 
   if (style == RANDOM) {
-    random = new RanPark(update->ranmaster->uniform());
+    random = new RanKnuth(update->ranmaster->uniform());
     double seed = update->ranmaster->uniform();
     random->reset(seed,comm->me,100);
   } else random = NULL;
 
   // list of new cell indices for one refined cell
+  // refinement may occur between minlevel and maxlevel-1 inclusive
 
-  childlist = new int[nx*ny*nz];
+  Grid::ParentLevel *plevels = grid->plevels;
+
+  int nmax = 0;
+  for (int i = minlevel; i < maxlevel; i++)
+    nmax = MAX(nmax,plevels[i].nx * plevels[i].ny * plevels[i].nz);
+  childlist = new int[nmax];
 
   // rlist and clist for refine/coarsen
 
@@ -704,12 +724,13 @@ void AdaptGrid::refine_particle()
 
 void AdaptGrid::refine_surf()
 {
-  int j,m,icell,flag,nsurf;
+  int j,m,icell,flag,nsurf,plevel;
   surfint *csurfs;
   double *norm,*lo,*hi;
 
   int dim = domain->dimension;
   Grid::ChildCell *cells = grid->cells;
+  Grid::ParentLevel *plevels = grid->plevels;
   Surf::Line *lines = surf->lines;
   Surf::Tri *tris = surf->tris;
 
@@ -734,10 +755,11 @@ void AdaptGrid::refine_surf()
 
     lo = cells[icell].lo;
     hi = cells[icell].hi;
+    plevel = cells[icell].level;
     flag = 1;
-    if (fabs(hi[0]-lo[0])/nx < surfsize) flag = 0;
-    if (fabs(hi[1]-lo[1])/ny < surfsize) flag = 0;
-    if (dim == 3 && fabs(hi[2]-lo[2])/nz < surfsize) flag = 0;
+    if (fabs(hi[0]-lo[0])/plevels[plevel].nx < surfsize) flag = 0;
+    if (fabs(hi[1]-lo[1])/plevels[plevel].ny < surfsize) flag = 0;
+    if (dim == 3 && fabs(hi[2]-lo[2])/plevels[plevel].nz < surfsize) flag = 0;
     if (flag) rlist[n++] = icell;
   }
   rnum = n;
@@ -934,7 +956,7 @@ int AdaptGrid::perform_refine()
 
 void AdaptGrid::candidates_coarsen()
 {
-  int m,n,proc,level,nxyz,nchild;
+  int m,n,level,nxyz,nchild;
   cellint parentID;
   double lo[3],hi[3];
 
@@ -955,7 +977,7 @@ void AdaptGrid::candidates_coarsen()
       compute = modify->compute[icompute];
       compute->compute_per_grid();
       if (compute->post_process_grid_flag)
-	compute->post_process_grid(valindex,1,NULL,NULL,NULL,1);
+        compute->post_process_grid(valindex,1,NULL,NULL,NULL,1);
     } else if (valuewhich == FIX) fix = modify->fix[ifix];
   }
 
@@ -1011,7 +1033,7 @@ void AdaptGrid::candidates_coarsen()
   int *proclist;
   memory->create(proclist,nglocal,"adapt_grid:proclist");
   Rvous1 *inbuf = (Rvous1 *) memory->smalloc((bigint) nglocal*sizeof(Rvous1),
-					     "adapt_grid:inbuf");
+                                             "adapt_grid:inbuf");
   cnum = 0;
   int nsend = 0;
 
@@ -1086,7 +1108,7 @@ void AdaptGrid::candidates_coarsen()
 
   char *buf;
   int nreturn = comm->rendezvous(1,nsend,(char *) inbuf,sizeof(Rvous1),
-				 0,proclist,NULL,0,buf,0,this,0);
+                                 0,proclist,NULL,0,buf,0,this,0);
 
   Rvous1 *outbuf = (Rvous1 *) buf;
 
@@ -1101,9 +1123,9 @@ void AdaptGrid::candidates_coarsen()
     if (clhash->find(parentID) == clhash->end()) {
       (*clhash)[parentID] = cnum;
       if (cnum == cnummax) {
-	cnummax += DELTA_LIST;
-	clist = (CList *) memory->srealloc(clist,cnummax*sizeof(CList),
-					   "adapt_grid:clist");
+        cnummax += DELTA_LIST;
+        clist = (CList *) memory->srealloc(clist,cnummax*sizeof(CList),
+                                           "adapt_grid:clist");
       }
       clist[cnum].parentID = parentID;
       clist[cnum].plevel = outbuf[i].plevel;
@@ -1230,14 +1252,14 @@ double AdaptGrid::coarsen_value_cell(int icell)
       else if (valuewhich == FIX) value += value_fix(jcell);
     } else if (combine == MINIMUM) {
       if (valuewhich == COMPUTE)
-	value = MIN(value,value_compute(jcell));
+        value = MIN(value,value_compute(jcell));
       else if (valuewhich == FIX)
-	value = MIN(value,value_fix(jcell));
+        value = MIN(value,value_fix(jcell));
     } else if (combine == MAXIMUM) {
       if (valuewhich == COMPUTE)
-	value = MAX(value,value_compute(jcell));
+        value = MAX(value,value_compute(jcell));
       else if (valuewhich == FIX)
-	value = MAX(value,value_fix(jcell));
+        value = MAX(value,value_fix(jcell));
     }
   }
 
@@ -1338,9 +1360,9 @@ void AdaptGrid::coarsen_value()
       onevalue = values[m];
       if (combine == SUM) allvalues += onevalue;
       else if (combine == MINIMUM)
-	allvalues = MIN(allvalues,onevalue);
+        allvalues = MIN(allvalues,onevalue);
       else if (combine == MAXIMUM)
-	allvalues = MAX(allvalues,onevalue);
+        allvalues = MAX(allvalues,onevalue);
     }
 
     if (cdecide == LESS) {
@@ -1497,7 +1519,7 @@ void AdaptGrid::compute_grad_after_coarsen() {
 
 void AdaptGrid::particle_surf_comm()
 {
-  int j,m,plevel,ihalf,jhalf,khalf,ichild,nchild,owner;
+  int m,plevel,ihalf,jhalf,khalf,ichild,nchild,owner;
   int icell,jcell,np,nsplit;
   cellint parentID;
   int *csubs;
@@ -1523,7 +1545,7 @@ void AdaptGrid::particle_surf_comm()
   int *proclist;
   memory->create(proclist,nsend,"adapt_grid:proclist");
   Rvous2 *inbuf = (Rvous2 *) memory->smalloc((bigint) nsend*sizeof(Rvous2),
-					     "adapt_grid:inbuf");
+                                             "adapt_grid:inbuf");
   nsend = 0;
 
   for (int i = 0; i < cnum; i++) {
@@ -1554,7 +1576,7 @@ void AdaptGrid::particle_surf_comm()
 
   char *buf;
   int nreturn = comm->rendezvous(1,nsend,(char *) inbuf,sizeof(Rvous2),
-				 0,proclist,NULL,0,buf,0,this,0);
+                                 0,proclist,NULL,0,buf,0,this,0);
 
   Rvous2 *outbuf = (Rvous2 *) buf;
 
@@ -1567,7 +1589,7 @@ void AdaptGrid::particle_surf_comm()
   nsend = nreturn;
   memory->create(proclist,nsend,"adapt_grid:proclist");
   SendAdapt *sadapt = (SendAdapt *) memory->smalloc(nsend*sizeof(SendAdapt),
-						    "adapt_grid:sadapt");
+                                                    "adapt_grid:sadapt");
   for (int i = 0; i < nreturn; i++) {
     icell = outbuf[i].icell;
     cells[icell].proc = -1;
@@ -1588,8 +1610,8 @@ void AdaptGrid::particle_surf_comm()
       csubs = sinfo[cells[icell].isplit].csubs;
       np = 0;
       for (int j = 0; j < nsplit; j++) {
-	jcell = csubs[j];
-	np += cinfo[jcell].count;
+        jcell = csubs[j];
+        np += cinfo[jcell].count;
       }
       sadapt[i].np = np;
     }
@@ -1628,9 +1650,9 @@ void AdaptGrid::particle_surf_comm()
 
     if (alhash->find(parentID) == alhash->end()) {
       if (anum == anummax) {
-	anummax += DELTA_LIST;
-	alist = (ActionList *) memory->srealloc(alist,anummax*sizeof(ActionList),
-						"adapt_grid:alist");
+        anummax += DELTA_LIST;
+        alist = (ActionList *) memory->srealloc(alist,anummax*sizeof(ActionList),
+                                                "adapt_grid:alist");
       }
       (*alhash)[parentID] = anum;
       m = anum++;
@@ -1688,8 +1710,8 @@ void AdaptGrid::particle_surf_comm()
 
 int AdaptGrid::perform_coarsen()
 {
-  int i,m,icell,nchild,newcell,mask;
-  int plevel,nsplit,jcell,ip;
+  int i,nchild,newcell,mask;
+  int plevel,nsplit,jcell;
   cellint parentID;
   double plo[3],phi[3];
   int *csubs;
@@ -1717,8 +1739,8 @@ int AdaptGrid::perform_coarsen()
     // coarsen parentID to become a new child cell
 
     grid->coarsen_cell(parentID,plevel,plo,phi,nchild,
-		       alist[i].index,alist[i].nsurf,alist[i].np,
-		       alist[i].surfs,alist[i].particles,cut2d,cut3d);
+                       alist[i].index,alist[i].nsurf,alist[i].np,
+                       alist[i].surfs,alist[i].particles,cut2d,cut3d);
 
     cells = grid->cells;
     cinfo = grid->cinfo;

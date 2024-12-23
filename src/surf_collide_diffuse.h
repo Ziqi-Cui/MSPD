@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -22,22 +22,23 @@ SurfCollideStyle(diffuse,SurfCollideDiffuse)
 #define SPARTA_SURF_COLLIDE_DIFFUSE_H
 
 #include "surf_collide.h"
+#include "surf.h"
 
 namespace SPARTA_NS {
 
 class SurfCollideDiffuse : public SurfCollide {
  public:
   SurfCollideDiffuse(class SPARTA *, int, char **);
-  SurfCollideDiffuse(class SPARTA *sparta) : SurfCollide(sparta) {}
-  ~SurfCollideDiffuse();
-  void init();
-  Particle::OnePart *collide(Particle::OnePart *&, double *, double &,
-                             int, int &);
+  SurfCollideDiffuse(class SPARTA *sparta) : SurfCollide(sparta) {} // needed Kokkos
+  virtual ~SurfCollideDiffuse();
+  virtual void init();
+  Particle::OnePart *collide(Particle::OnePart *&, double &,
+                             int, double *, int, int &);
+  void wrapper(Particle::OnePart *, double *, int *, double*);
+  void flags_and_coeffs(int *, double *);
   virtual class CommMacro* returnComm() { return macro; }
-  void dynamic();
 
  protected:
-  double twall;              // surface temperature
   double acc;                // surface accomodation coeff
   double vx,vy,vz;           // translational velocity of surface
   double wx,wy,wz;           // angular velocity of surface
@@ -45,11 +46,11 @@ class SurfCollideDiffuse : public SurfCollide {
   int tflag,rflag;           // flags for translation and rotation
   int trflag;                // 1 if either tflag or rflag is set
 
-  char *tstr;                // temperature variable name (NULL if constant)
-  int tvar;                  // index of equal-style variable
+  Surf::Line *lines;
+  Surf::Tri *tris;
 
   double vstream[3];
-  class RanPark *random;     // RNG for particle reflection
+  class RanKnuth *random;     // RNG for particle reflection
   class CommMacro* macro;
 
   void diffuse(Particle::OnePart *, double *);

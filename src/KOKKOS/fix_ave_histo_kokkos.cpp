@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -240,7 +240,7 @@ void FixAveHistoKokkos::end_of_step()
           compute->post_process_isurf_grid();
 
         if (j == 0 || compute->post_process_grid_flag)
-          bin_grid_cells(reducer, computeKKBase->d_vector);
+          bin_grid_cells(reducer, computeKKBase->d_vector_particle);
         else if (computeKKBase->d_array_grid.data())
           // @stamoor: fix_ave_histo.cpp passes compute->array_grid[0][j-1],
           // @stamoor: so send subview of d_array_grid.
@@ -282,7 +282,7 @@ void FixAveHistoKokkos::end_of_step()
           bin_particles(reducer, fix->array_particle[j-1],fix->size_per_particle_cols);
       } else if (kind == PERGRID) {
         if (j == 0) {
-          bin_grid_cells(reducer, fixKKBase->d_vector);
+          bin_grid_cells(reducer, fixKKBase->d_vector_particle);
         } else if (fixKKBase->d_array_grid.data()) {
           // @stamoor: fix_ave_histo.cpp passes fix->array_grid[j-1], which is
           // not the same as what happens above with the compute object, it is
@@ -488,7 +488,6 @@ void FixAveHistoKokkos::bin_vector(
 
   auto policy = Kokkos::RangePolicy<TagFixAveHisto_BinVector,DeviceType>(0, n);
   Kokkos::parallel_reduce(policy, *this, reducer);
-  DeviceType().fence();
 }
 
 /* ----------------------------------------------------------------------
@@ -526,7 +525,6 @@ void FixAveHistoKokkos::bin_particles(
       auto policy = RangePolicy<TagFixAveHisto_BinParticlesX4,DeviceType>(0, n);
       Kokkos::parallel_reduce(policy, *this, reducer);
     }
-    DeviceType().fence();
 
   } else if (attribute == V) {
 
@@ -543,7 +541,6 @@ void FixAveHistoKokkos::bin_particles(
       auto policy = RangePolicy<TagFixAveHisto_BinParticlesV4,DeviceType>(0, n);
       Kokkos::parallel_reduce(policy, *this, reducer);
     }
-    DeviceType().fence();
   }
 }
 
@@ -583,7 +580,6 @@ void FixAveHistoKokkos::bin_particles(
     auto policy = RangePolicy<TagFixAveHisto_BinParticles4,DeviceType>(0, n);
     Kokkos::parallel_reduce(policy, *this, reducer);
   }
-  DeviceType().fence();
 }
 
 /* ----------------------------------------------------------------------
@@ -608,7 +604,6 @@ void FixAveHistoKokkos::bin_grid_cells(
     auto policy = RangePolicy<TagFixAveHisto_BinGridCells2,DeviceType>(0, n);
     Kokkos::parallel_reduce(policy, *this, reducer);
   }
-  DeviceType().fence();
 }
 
 

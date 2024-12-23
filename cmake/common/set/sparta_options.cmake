@@ -42,7 +42,8 @@ sparta_option(BUILD_JPEG "Enable or disable JPEG TPL. Default: OFF." OFF
 sparta_option(BUILD_PNG "Enable or disable PNG TPL. Default: OFF." OFF
               SPARTA_BUILD_TPL_LIST)
 
-option(FFT "Select a FFT TPL from FFTW2, FFTW3, and MKL. Default: OFF." OFF)
+set(FFT "OFF" CACHE STRING "Select a FFT TPL from FFTW3, MKL, or KISS. Default: KISS.")
+set(FFT_KOKKOS "OFF" CACHE STRING "Select a FFT TPL for Kokkos from CUFFT, HIPFFT, FFTW3, MKL, or KISS. Default: KISS.")
 # ######### END   SPARTA TPL DEPENDENCIES ##########
 
 # ######### BEGIN SPARTA EXTRA OPTIONS ##########
@@ -105,6 +106,9 @@ sparta_option(
   "The path to your preset files at ${SPARTA_MULTIBUILD_PRESET_DIR}/${SPARTA_MULTIBUILD_CONFIG}.cmake. Default: \"\""
   ""
   SPARTA_EXTRA_OPTIONS_LIST)
+
+sparta_option(SPARTA_ENABLE_PARAVIEW_TESTING "Enable ParaView testing. Default: OFF" OFF
+              SPARTA_EXTRA_OPTIONS_LIST)
 
 if(SPARTA_CTEST_CONFIGS)
   foreach(config ${SPARTA_CTEST_CONFIGS})

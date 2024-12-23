@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -24,7 +24,7 @@
 #include "modify.h"
 #include "fix.h"
 #include "fix_ambipolar.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "math_const.h"
 #include "memory.h"
 #include "error.h"
@@ -55,6 +55,8 @@ ReactBirdKokkos::ReactBirdKokkos(SPARTA *sparta, int narg, char **arg) :
   memoryKK->create_kokkos(k_tally_reactions,tally_reactions,nlist,"react_bird:tally_reactions");
   memoryKK->create_kokkos(k_tally_reactions_all,tally_reactions_all,nlist,"react_bird:tally_reactions_all");
   d_tally_reactions = k_tally_reactions.d_view;
+
+  random_backup = NULL;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -65,6 +67,12 @@ ReactBirdKokkos::~ReactBirdKokkos()
 
   tally_reactions = NULL;
   tally_reactions_all = NULL;
+
+#ifdef SPARTA_KOKKOS_EXACT
+  rand_pool.destroy();
+  if (random_backup)
+    delete random_backup;
+#endif
 
   // deallocate views of views in serial to prevent race conditions in external tools
 
@@ -83,10 +91,6 @@ ReactBirdKokkos::~ReactBirdKokkos()
       }
     }
   }
-
-#ifdef SPARTA_KOKKOS_EXACT
-  rand_pool.destroy();
-#endif
 }
 
 /* ---------------------------------------------------------------------- */
@@ -157,19 +161,48 @@ double ReactBirdKokkos::extract_tally(int m)
   if (!tally_flag) {
     tally_flag = 1;
 
-    if (sparta->kokkos->gpu_direct_flag) {
+    if (sparta->kokkos->gpu_aware_flag) {
       MPI_Allreduce(d_tally_reactions.data(),k_tally_reactions_all.d_view.data(),nlist,
-                    MPI_INT,MPI_SUM,world);
+                    MPI_SPARTA_BIGINT,MPI_SUM,world);
       k_tally_reactions_all.modify_device();
       k_tally_reactions_all.sync_host();
     } else {
       k_tally_reactions.modify_device();
       k_tally_reactions.sync_host();
       MPI_Allreduce(k_tally_reactions.h_view.data(),k_tally_reactions_all.h_view.data(),nlist,
-                    MPI_INT,MPI_SUM,world);
+                    MPI_SPARTA_BIGINT,MPI_SUM,world);
     }
 
   }
 
   return 1.0*tally_reactions_all[m];
 };
+
+/* ---------------------------------------------------------------------- */
+
+void ReactBirdKokkos::backup()
+{
+  d_tally_reactions_backup = decltype(d_tally_reactions)(Kokkos::view_alloc("react_bird:tally_reactions_backup",Kokkos::WithoutInitializing),d_tally_reactions.extent(0));
+
+  Kokkos::deep_copy(d_tally_reactions_backup,d_tally_reactions);
+
+#ifdef SPARTA_KOKKOS_EXACT
+  if (!random_backup)
+    random_backup = new RanKnuth(12345 + comm->me);
+  memcpy(random_backup,random,sizeof(RanKnuth));
+#endif
+
+}
+
+/* ---------------------------------------------------------------------- */
+
+void ReactBirdKokkos::restore()
+{
+  Kokkos::deep_copy(d_tally_reactions,d_tally_reactions_backup);
+
+#ifdef SPARTA_KOKKOS_EXACT
+  memcpy(random,random_backup,sizeof(RanKnuth));
+#endif
+
+  d_tally_reactions_backup = decltype(d_tally_reactions_backup)();
+}

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -27,10 +27,11 @@
 #include "output.h"
 #include "dump.h"
 #include "random_mars.h"
-#include "random_park.h"
+#include "random_knuth.h"
 #include "memory.h"
 #include "error.h"
 #include "timer.h"
+#include "fix_adapt.h"
 
 using namespace SPARTA_NS;
 
@@ -48,7 +49,7 @@ FixBalance::FixBalance(SPARTA *sparta, int narg, char **arg) :
 
   scalar_flag = 1;
   vector_flag = 1;
-  size_vector = 2;
+  size_vector = 3;
   global_freq = 1;
 
   // parse arguments
@@ -118,13 +119,14 @@ FixBalance::FixBalance(SPARTA *sparta, int narg, char **arg) :
   rcb = NULL;
 
   if (bstyle == RANDOM || bstyle == PROC)
-    random = new RanPark(update->ranmaster->uniform());
+    random = new RanKnuth(update->ranmaster->uniform());
   if (bstyle == BISECTION) rcb = new RCB(sparta);
 
   // compute initial outputs
 
   last = 0.0;
   imbfinal = imbprev = imbalance_factor(maxperproc);
+  nbalance = 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -153,6 +155,29 @@ void FixBalance::init()
   if (bstyle != BISECTION && grid->cutoff >= 0.0)
     error->all(FLERR,"Cannot use non-rcb fix balance with a grid cutoff");
 
+  // check if fix balance rcb time is after fix adapt with coarsening
+
+  if (rcbwt == TIME) {
+    int coarsen_flag = 0;
+    int after_flag = 0;
+    for (int ifix = 0; ifix < modify->nfix; ifix++) {
+      if (strstr(modify->fix[ifix]->style,"adapt") != NULL)
+        if (((FixAdapt*)modify->fix[ifix])->coarsen_flag)
+          coarsen_flag = 1;
+
+      if (strstr(modify->fix[ifix]->style,"balance") != NULL)
+        if (coarsen_flag) {
+          after_flag = 1;
+          break;
+        }
+    }
+
+    if (after_flag && comm->me == 0) {
+      error->warning(FLERR,"Using fix_adapt coarsen before fix balance "
+        "rcb time may make the accumulated timing data less accurate");
+    }
+  }
+
   last = 0.0;
   timer->init();
 }
@@ -167,6 +192,10 @@ void FixBalance::end_of_step()
 
   imbnow = imbalance_factor(maxperproc);
   if (imbnow <= thresh) return;
+
+  // perform rebalancing
+
+  nbalance++;
   imbprev = imbnow;
 
   Grid::ChildCell *cells = grid->cells;
@@ -276,10 +305,20 @@ void FixBalance::end_of_step()
 
   grid->notify_changed();
 
+  // if explicit distributed surfs
+  // set redistribute timestep and clear custom status flags
+
+  if (surf->distributed && !surf->implicit) {
+    surf->localghost_changed_step = update->ntimestep;
+    for (int i = 0; i < surf->ncustom; i++)
+      surf->estatus[i] = 0;
+  }
+
   // final imbalance factor
+  // for RCB TIME, cannot compute imbalance from timers since grid cells moved
 
   if (bstyle == BISECTION && rcbwt == TIME)
-    imbfinal = 0.0; // can't compute imbalance from timers since grid cells moved
+    imbfinal = 0.0;
   else
     imbfinal = imbalance_factor(maxperproc);
 }
@@ -293,7 +332,6 @@ void FixBalance::end_of_step()
 double FixBalance::imbalance_factor(double &maxcost)
 {
   double mycost,totalcost;
-  double mycost_proc_weighted,maxcost_proc_weighted,nprocs_weighted;
 
   if (bstyle == BISECTION && rcbwt == TIME) {
     timer_cost();
@@ -318,13 +356,14 @@ double FixBalance::compute_scalar()
 }
 
 /* ----------------------------------------------------------------------
-   return stats for last rebalance
+   return stats for last rebalance or cummulative count of rebalances
 ------------------------------------------------------------------------- */
 
 double FixBalance::compute_vector(int i)
 {
   if (i == 0) return maxperproc;
-  return imbprev;
+  if (i == 1) return imbprev;
+  return (double) nbalance;
 }
 
 /* -------------------------------------------------------------------- */
@@ -346,7 +385,7 @@ void FixBalance::timer_cost()
 
 /* -------------------------------------------------------------------- */
 
-void FixBalance::timer_cell_weights(double *weight)
+void FixBalance::timer_cell_weights(double* &weight)
 {
   // localwt = weight assigned to each owned grid cell
   // just return if no time yet tallied
@@ -356,6 +395,10 @@ void FixBalance::timer_cell_weights(double *weight)
   if (maxcost <= 0.0) {
     memory->destroy(weight);
     weight = NULL;
+    if (comm->me == 0) {
+      error->warning(FLERR,"No time history accumulated for fix balance "
+        "rcb time, using rcb cell option instead");
+    }
     return;
   }
 

@@ -1,50 +1,22 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #include <Kokkos_Core.hpp>
 
-#include <impl/Kokkos_Timer.hpp>
+#include <Kokkos_Timer.hpp>
 #include <iostream>
 #include <cstdlib>
 #include <cstdint>
@@ -79,37 +51,6 @@ struct my_complex {
   }
 
   KOKKOS_INLINE_FUNCTION
-  my_complex& operator=(const volatile my_complex& src) {
-    re    = src.re;
-    im    = src.im;
-    dummy = src.dummy;
-    return *this;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  volatile my_complex& operator=(const my_complex& src) volatile {
-    re    = src.re;
-    im    = src.im;
-    dummy = src.dummy;
-    return *this;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  volatile my_complex& operator=(const volatile my_complex& src) volatile {
-    re    = src.re;
-    im    = src.im;
-    dummy = src.dummy;
-    return *this;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  my_complex(const volatile my_complex& src) {
-    re    = src.re;
-    im    = src.im;
-    dummy = src.dummy;
-  }
-
-  KOKKOS_INLINE_FUNCTION
   my_complex(const double& val) {
     re    = val;
     im    = 0.0;
@@ -125,23 +66,7 @@ struct my_complex {
   }
 
   KOKKOS_INLINE_FUNCTION
-  void operator+=(const volatile my_complex& src) volatile {
-    re += src.re;
-    im += src.im;
-    dummy += src.dummy;
-  }
-
-  KOKKOS_INLINE_FUNCTION
   my_complex operator+(const my_complex& src) {
-    my_complex tmp = *this;
-    tmp.re += src.re;
-    tmp.im += src.im;
-    tmp.dummy += src.dummy;
-    return tmp;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  my_complex operator+(const volatile my_complex& src) volatile {
     my_complex tmp = *this;
     tmp.re += src.re;
     tmp.im += src.im;
@@ -160,26 +85,17 @@ struct my_complex {
   }
 
   KOKKOS_INLINE_FUNCTION
-  void operator*=(const volatile my_complex& src) volatile {
-    double re_tmp = re * src.re - im * src.im;
-    double im_tmp = re * src.im + im * src.re;
-    re            = re_tmp;
-    im            = im_tmp;
-    dummy *= src.dummy;
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  bool operator==(const my_complex& src) {
+  bool operator==(const my_complex& src) const {
     return (re == src.re) && (im == src.im) && (dummy == src.dummy);
   }
 
   KOKKOS_INLINE_FUNCTION
-  bool operator!=(const my_complex& src) {
+  bool operator!=(const my_complex& src) const {
     return (re != src.re) || (im != src.im) || (dummy != src.dummy);
   }
 
   KOKKOS_INLINE_FUNCTION
-  bool operator!=(const double& val) {
+  bool operator!=(const double& val) const {
     return (re != val) || (im != 0) || (dummy != 0);
   }
 
@@ -244,8 +160,9 @@ struct functor_teamvector_for {
     shared_int values         = shared_int(team.team_shmem(), shmemSize);
 
     if (values.data() == nullptr || values.extent(0) < shmemSize) {
-      printf("FAILED to allocate shared memory of size %u\n",
-             static_cast<unsigned int>(shmemSize));
+      KOKKOS_IMPL_DO_NOT_USE_PRINTF(
+          "FAILED to allocate shared memory of size %u\n",
+          static_cast<unsigned int>(shmemSize));
     } else {
       // Initialize shared memory.
       Kokkos::parallel_for(Kokkos::TeamVectorRange(team, 131),
@@ -278,9 +195,10 @@ struct functor_teamvector_for {
         }
 
         if (test != value) {
-          printf("FAILED teamvector_parallel_for %i %i %f %f\n",
-                 team.league_rank(), team.team_rank(),
-                 static_cast<double>(test), static_cast<double>(value));
+          KOKKOS_IMPL_DO_NOT_USE_PRINTF(
+              "FAILED teamvector_parallel_for %i %i %lf %lf\n",
+              team.league_rank(), team.team_rank(), static_cast<double>(test),
+              static_cast<double>(value));
           flag() = 1;
         }
       });
@@ -344,17 +262,18 @@ struct functor_teamvector_reduce {
 
       if (test != value) {
         if (team.league_rank() == 0) {
-          printf("FAILED teamvector_parallel_reduce %i %i %lf %lf %lu\n",
-                 (int)team.league_rank(), (int)team.team_rank(),
-                 static_cast<double>(test), static_cast<double>(value),
-                 static_cast<unsigned long>(sizeof(Scalar)));
+          KOKKOS_IMPL_DO_NOT_USE_PRINTF(
+              "FAILED teamvector_parallel_reduce %i %i %lf %lf %lu\n",
+              (int)team.league_rank(), (int)team.team_rank(),
+              static_cast<double>(test), static_cast<double>(value),
+              static_cast<unsigned long>(sizeof(Scalar)));
         }
 
         flag() = 1;
       }
       if (test != shared_value(0)) {
         if (team.league_rank() == 0) {
-          printf(
+          KOKKOS_IMPL_DO_NOT_USE_PRINTF(
               "FAILED teamvector_parallel_reduce with shared result %i %i %lf "
               "%lf %lu\n",
               static_cast<int>(team.league_rank()),
@@ -416,14 +335,15 @@ struct functor_teamvector_reduce_reducer {
       }
 
       if (test != value) {
-        printf("FAILED teamvector_parallel_reduce_reducer %i %i %lf %lf\n",
-               team.league_rank(), team.team_rank(), static_cast<double>(test),
-               static_cast<double>(value));
+        KOKKOS_IMPL_DO_NOT_USE_PRINTF(
+            "FAILED teamvector_parallel_reduce_reducer %i %i %lf %lf\n",
+            team.league_rank(), team.team_rank(), static_cast<double>(test),
+            static_cast<double>(value));
 
         flag() = 1;
       }
       if (test != shared_value(0)) {
-        printf(
+        KOKKOS_IMPL_DO_NOT_USE_PRINTF(
             "FAILED teamvector_parallel_reduce_reducer shared value %i %i %lf "
             "%lf\n",
             team.league_rank(), team.team_rank(), static_cast<double>(test),
@@ -443,15 +363,35 @@ bool test_scalar(int nteams, int team_size, int test) {
   h_flag() = 0;
   Kokkos::deep_copy(d_flag, h_flag);
 
+  Kokkos::TeamPolicy<ExecutionSpace> policy(nteams, team_size, 8);
+
+  // FIXME_OPENMPTARGET - Need to allocate scratch space via set_scratch_space
+  // for the OPENMPTARGET backend.
+#ifdef KOKKOS_ENABLE_OPENMPTARGET
+  using scratch_t = Kokkos::View<Scalar*, ExecutionSpace,
+                                 Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
+
+  int scratch_size = 0;
+  if (test == 0) {
+    scratch_size = scratch_t::shmem_size(131);
+  } else {
+    // FIXME_OPENMPTARGET - Currently allocating more than one team for nested
+    // reduction leads to runtime errors of illegal memory access, caused mostly
+    // due to the OpenMP memory allocation constraints.
+    policy       = Kokkos::TeamPolicy<ExecutionSpace>(1, team_size, 8);
+    scratch_size = scratch_t::shmem_size(1);
+  }
+
+  policy.set_scratch_size(0, Kokkos::PerTeam(scratch_size));
+#endif
+
   if (test == 0) {
     Kokkos::parallel_for(
-        "Test::TeamVectorFor",
-        Kokkos::TeamPolicy<ExecutionSpace>(nteams, team_size, 8),
+        "Test::TeamVectorFor", policy,
         functor_teamvector_for<Scalar, ExecutionSpace>(d_flag));
   } else if (test == 1) {
     Kokkos::parallel_for(
-        "Test::TeamVectorReduce",
-        Kokkos::TeamPolicy<ExecutionSpace>(nteams, team_size, 8),
+        "Test::TeamVectorReduce", policy,
         functor_teamvector_reduce<Scalar, ExecutionSpace>(d_flag));
   } else if (test == 2) {
     Kokkos::parallel_for(
@@ -469,16 +409,25 @@ template <class ExecutionSpace>
 bool Test(int test) {
   bool passed = true;
 
+// With SYCL 33*8 exceeds the maximum work group size
+#ifdef KOKKOS_ENABLE_SYCL
+  int team_size = 31;
+#else
   int team_size = 33;
-  if (team_size > int(ExecutionSpace::concurrency()))
-    team_size = int(ExecutionSpace::concurrency());
+#endif
+  int const concurrency = ExecutionSpace().concurrency();
+  if (team_size > concurrency) team_size = concurrency;
   passed = passed && test_scalar<int, ExecutionSpace>(317, team_size, test);
   passed = passed &&
            test_scalar<long long int, ExecutionSpace>(317, team_size, test);
   passed = passed && test_scalar<float, ExecutionSpace>(317, team_size, test);
   passed = passed && test_scalar<double, ExecutionSpace>(317, team_size, test);
+  // FIXME_OPENMPTARGET - Use of custom reducers currently results in runtime
+  // memory errors.
+#if !defined(KOKKOS_ENABLE_OPENMPTARGET)
   passed =
       passed && test_scalar<my_complex, ExecutionSpace>(317, team_size, test);
+#endif
 
   return passed;
 }
@@ -489,7 +438,17 @@ namespace Test {
 
 TEST(TEST_CATEGORY, team_teamvector_range) {
   ASSERT_TRUE((TestTeamVectorRange::Test<TEST_EXECSPACE>(0)));
+#if defined(KOKKOS_ENABLE_CUDA) && \
+    defined(KOKKOS_COMPILER_NVHPC)  // FIXME_NVHPC
+  if constexpr (std::is_same_v<TEST_EXECSPACE, Kokkos::Cuda>) {
+    GTEST_SKIP() << "Disabling 2/3rd of the test for now";
+  }
+#endif
   ASSERT_TRUE((TestTeamVectorRange::Test<TEST_EXECSPACE>(1)));
+  // FIXME_OPENMPTARGET - Use of kokkos reducers currently results in runtime
+  // memory errors.
+#if !defined(KOKKOS_ENABLE_OPENMPTARGET)
   ASSERT_TRUE((TestTeamVectorRange::Test<TEST_EXECSPACE>(2)));
+#endif
 }
 }  // namespace Test

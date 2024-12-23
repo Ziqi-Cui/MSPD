@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -169,7 +169,6 @@ void ComputeCountKokkos::per_species_tally_kokkos()
     Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeCount_per_species_tally_atomic<1> >(0,nlocal),*this);
   else
     Kokkos::parallel_for(Kokkos::RangePolicy<DeviceType, TagComputeCount_per_species_tally_atomic<0> >(0,nlocal),*this);
-  DeviceType().fence();
   copymode = 0;
 
   if (need_dup) {
@@ -186,7 +185,7 @@ template<int NEED_ATOMICS>
 KOKKOS_INLINE_FUNCTION
 void ComputeCountKokkos::operator()(TagComputeCount_per_species_tally_atomic<NEED_ATOMICS>, const int& i) const {
 
-  // The tally (count) array is duplicated for OpenMP, atomic for CUDA, and neither for Serial
+  // The tally (count) array is duplicated for OpenMP, atomic for GPUs, and neither for Serial
 
   auto v_count = ScatterViewHelper<typename NeedDup<NEED_ATOMICS,DeviceType>::value,decltype(dup_count),decltype(ndup_count)>::get(dup_count,ndup_count);
   auto a_count = v_count.template access<typename AtomicDup<NEED_ATOMICS,DeviceType>::value>();

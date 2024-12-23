@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -31,7 +31,20 @@ class ReactTCE : public ReactBird {
   ReactTCE(class SPARTA *, int, char **);
   void init();
   int attempt(Particle::OnePart *, Particle::OnePart *,
-              double, double, double, double &, int &);
+              double, double, double, double &, int &, double); //modify: ÃÌº”double–Œ≤Œ
+
+  double newtonTvib(int nmode, double Evib,
+                      double VibTemp[],
+                      double Tvib0,
+                      double tol,
+                      int nmax);
+
+  double bird_dEvib(int nmode, double Tvib,
+                  double VibTemp[]);
+
+  double bird_Evib(int nmode, double Tvib,
+                 double VibTemp[],
+                 double Evib);
 };
 
 }

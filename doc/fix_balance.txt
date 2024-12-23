@@ -126,6 +126,15 @@ of timesteps {Nfreq} between balancing steps also needs to be large
 enough to give reliable timings. The timers used for balancing tally
 time from the move, sort, collide, and modify portions of each timestep.
 
+IMPORTANT NOTE: The "adapt_grid"_adapt_grid.html command zeros out
+timing data, so the weight {time} option is not available immediatly
+after this command.
+
+IMPORTANT NOTE: The coarsening option in "fix_adapt"_fix_adapt.html may
+shift cells to different processors, which makes the accumulated
+timing data for the weight {time} option less accurate when load
+balancing is performed immediately after this command.
+
 Here is an example of an RCB partitioning for 24 processors, of a 2d
 hierarchical grid with 5 levels, refined around a tilted ellipsoidal
 surface object (outlined in pink).  This is for a {weight cell}
@@ -168,12 +177,14 @@ No information about this fix is written to "binary restart
 files"_restart.html.
 
 This fix computes a global scalar which is the imbalance factor after
-the most recent rebalance and a global vector of length 2 with
-additional information about the most recent rebalancing. The 2 values
-in the vector are as follows:
+the most recent rebalance.  It also computes a global vector of length
+3 with additional information about the most recent rebalancing and
+the cummulative count of rebalancings.  The 3 values in the vector are
+as follows:
 
-1 = max # of particles per processor
-2 = imbalance factor before the last rebalance was performed :ul
+1 = max particle count on any processor after last rebalance
+2 = imbalance factor before the last rebalance was performed
+3 = cummulative count of rebalances since the fix was specified :ul
 
 As explained above, the imbalance factor is the ratio of the maximum
 number of particles on any processor to the average number of

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    SPARTA - Stochastic PArallel Rarefied-gas Time-accurate Analyzer
    http://sparta.sandia.gov
-   Steve Plimpton, sjplimp@sandia.gov, Michael Gallis, magalli@sandia.gov
+   Steve Plimpton, sjplimp@gmail.com, Michael Gallis, magalli@sandia.gov
    Sandia National Laboratories
 
    Copyright (2014) Sandia Corporation.  Under the terms of Contract
@@ -48,7 +48,6 @@ enum{LT,LE,GT,GE,EQ,NEQ,BETWEEN};
 SurfKokkos::SurfKokkos(SPARTA *sparta) : Surf(sparta)
 {
 
-
 }
 
 /* ---------------------------------------------------------------------- */
@@ -60,6 +59,66 @@ SurfKokkos::~SurfKokkos()
 
   mylines = NULL;
   mytris = NULL;
+
+  // deallocate views of views in serial to prevent race condition in profiling tools
+
+  for (int i = 0; i < k_eivec.extent(0); i++)
+    k_eivec.h_view(i).k_view = decltype(k_eivec.h_view(i).k_view)();
+
+  for (int i = 0; i < k_eiarray.extent(0); i++)
+    k_eiarray.h_view(i).k_view = decltype(k_eiarray.h_view(i).k_view)();
+
+  for (int i = 0; i < k_edvec.extent(0); i++)
+    k_edvec.h_view(i).k_view = decltype(k_edvec.h_view(i).k_view)();
+
+  for (int i = 0; i < k_edarray.extent(0); i++)
+    k_edarray.h_view(i).k_view = decltype(k_edarray.h_view(i).k_view)();
+
+  for (int i = 0; i < k_eivec_local.extent(0); i++)
+    k_eivec_local.h_view(i).k_view = decltype(k_eivec_local.h_view(i).k_view)();
+
+  for (int i = 0; i < k_eiarray_local.extent(0); i++)
+    k_eiarray_local.h_view(i).k_view = decltype(k_eiarray_local.h_view(i).k_view)();
+
+  for (int i = 0; i < k_edvec_local.extent(0); i++)
+    k_edvec_local.h_view(i).k_view = decltype(k_edvec_local.h_view(i).k_view)();
+
+  for (int i = 0; i < k_edarray_local.extent(0); i++)
+    k_edarray_local.h_view(i).k_view = decltype(k_edarray_local.h_view(i).k_view)();
+
+  eivec = NULL;
+  eiarray = NULL;
+  edvec = NULL;
+  edarray = NULL;
+
+  ewhich = NULL;
+  eicol = NULL;
+  edcol = NULL;
+
+  ncustom_ivec = ncustom_iarray = 0;
+  ncustom_dvec = ncustom_darray = 0;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void SurfKokkos::clear_explicit()
+{
+  nsurf = 0;
+  nlocal = nghost = nmax = 0;
+  nown = maxown = 0;
+
+  k_lines = decltype(k_lines)();
+  k_tris = decltype(k_tris)();
+  k_mylines = decltype(k_mylines)();
+  k_mytris = decltype(k_mytris)();
+
+  lines = NULL;
+  tris = NULL;
+  mylines = NULL;
+  mytris = NULL;
+
+  hash->clear();
+  hashfilled = 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -139,7 +198,6 @@ void SurfKokkos::grow(int old)
   }
 }
 
-
 /* ----------------------------------------------------------------------
    grow surface data structures
 ------------------------------------------------------------------------- */
@@ -176,21 +234,54 @@ void SurfKokkos::grow_own(int old)
 
 void SurfKokkos::sync(ExecutionSpace space, unsigned int mask)
 {
-  if (sparta->kokkos->prewrap) {
+  if (sparta->kokkos->prewrap)
     if (space == Device)
       error->one(FLERR,"Sync Device before wrap");
-    else
-      return;
-  }
 
   if (space == Device) {
     if (sparta->kokkos->auto_sync)
       modify(Host,mask);
     if (mask & LINE_MASK) k_lines.sync_device();
     if (mask & TRI_MASK) k_tris.sync_device();
+    if (mask & CUSTOM_MASK) {
+      if (ncustom) {
+        if (ncustom_ivec)
+          for (int i = 0; i < ncustom_ivec; i++)
+            k_eivec.h_view[i].k_view.sync_device();
+
+        if (ncustom_iarray)
+          for (int i = 0; i < ncustom_iarray; i++)
+            k_eiarray.h_view[i].k_view.sync_device();
+
+        if (ncustom_dvec)
+          for (int i = 0; i < ncustom_dvec; i++)
+            k_edvec.h_view[i].k_view.sync_device();
+
+        if (ncustom_darray)
+          for (int i = 0; i < ncustom_darray; i++)
+            k_edarray.h_view[i].k_view.sync_device();
+      }
+    }
   } else {
     if (mask & LINE_MASK) k_lines.sync_host();
     if (mask & TRI_MASK) k_tris.sync_host();
+    if (mask & CUSTOM_MASK) {
+      if (ncustom_ivec)
+        for (int i = 0; i < ncustom_ivec; i++)
+          k_eivec.h_view[i].k_view.sync_host();
+
+      if (ncustom_iarray)
+        for (int i = 0; i < ncustom_iarray; i++)
+          k_eiarray.h_view[i].k_view.sync_host();
+
+      if (ncustom_dvec)
+        for (int i = 0; i < ncustom_dvec; i++)
+          k_edvec.h_view[i].k_view.sync_host();
+
+      if (ncustom_darray)
+        for (int i = 0; i < ncustom_darray; i++)
+          k_edarray.h_view[i].k_view.sync_host();
+    }
   }
 }
 
@@ -198,20 +289,56 @@ void SurfKokkos::sync(ExecutionSpace space, unsigned int mask)
 
 void SurfKokkos::modify(ExecutionSpace space, unsigned int mask)
 {
-  if (sparta->kokkos->prewrap) {
+  if (sparta->kokkos->prewrap)
     if (space == Device)
       error->one(FLERR,"Modify Device before wrap");
-    else
-      return;
-  }
 
   if (space == Device) {
     if (mask & LINE_MASK) k_lines.modify_device();
     if (mask & TRI_MASK) k_tris.modify_device();
+    if (mask & CUSTOM_MASK) {
+      if (ncustom) {
+        if (ncustom_ivec)
+          for (int i = 0; i < ncustom_ivec; i++)
+            k_eivec.h_view[i].k_view.modify_device();
+
+        if (ncustom_iarray)
+          for (int i = 0; i < ncustom_iarray; i++)
+            k_eiarray.h_view[i].k_view.modify_device();
+
+        if (ncustom_dvec)
+          for (int i = 0; i < ncustom_dvec; i++)
+            k_edvec.h_view[i].k_view.modify_device();
+
+        if (ncustom_darray)
+          for (int i = 0; i < ncustom_darray; i++)
+            k_edarray.h_view[i].k_view.modify_device();
+      }
+    }
+
     if (sparta->kokkos->auto_sync)
       sync(Host,mask);
   } else {
     if (mask & LINE_MASK) k_lines.modify_host();
     if (mask & TRI_MASK) k_tris.modify_host();
+    if (mask & CUSTOM_MASK) {
+      if (ncustom) {
+        if (ncustom_ivec)
+          for (int i = 0; i < ncustom_ivec; i++)
+            k_eivec.h_view[i].k_view.modify_host();
+
+        if (ncustom_iarray)
+          for (int i = 0; i < ncustom_iarray; i++)
+            k_eiarray.h_view[i].k_view.modify_host();
+
+        if (ncustom_dvec)
+          for (int i = 0; i < ncustom_dvec; i++)
+            k_edvec.h_view[i].k_view.modify_host();
+
+        if (ncustom_darray)
+          for (int i = 0; i < ncustom_darray; i++)
+            k_edarray.h_view[i].k_view.modify_host();
+      }
+    }
   }
 }
