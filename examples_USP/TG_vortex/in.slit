@@ -14,15 +14,15 @@ global			gridcut -1 comm/sort yes
 boundary		o ro p
 
 create_box		-3.7880 3.7880 0 3.7880 -0.5 0.5
-create_grid		160 80 1
+create_grid		280 140 1
 
 balance_grid		rcb cell
 
-#read_surf          data.slit  group solid  invert
-read_surf          data.slit_inv  group solid  
+read_surf          data.slit  group solid  invert
+#read_surf          data.slit_inv  group solid  
 read_surf          data.slit_on  group outflow transparent  invert
-read_surf          data.slit_mid  group mid transparent
-read_surf          data.slit_mid_inv  group mid transparent
+read_surf          data.slit_mid  group mid transparent    invert
+read_surf          data.slit_mid_inv  group mid transparent  invert
 
 surf_collide   1 diffuse   273 1
 surf_collide   2 transparent
@@ -50,7 +50,7 @@ if "${collision_style}== dsmc" then &
   "collide			vss air ar.vss" &
 else &
   "collide			bgk air ${collision_style} ar.bgk" &
-  "collide_bgk_modify pr_num 0.66667 time_ave 0 reset_wmax 0.9999 "
+  "collide_bgk_modify pr_num 0.66667 time_ave 0.999 reset_wmax 0.9999 "
 
 
 stats			10
@@ -60,7 +60,7 @@ compute		3 surf mid air mflux
 stats_style		step cpu np
 
 
-timestep 		1.2e-5#1.7975e-4
+timestep 		1.7975e-4
 
 run				200
 

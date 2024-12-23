@@ -64,10 +64,14 @@ class CollideBGK : public Collide {
   void perform_sbgk(Particle::OnePart*, int, const class CommMacro*);
   void perform_esfp(Particle::OnePart*, int, const class CommMacro*);
   void perform_ufp(Particle::OnePart*, int, const class CommMacro*);
+  void perform_fp(Particle::OnePart*, int, const class CommMacro*);
+  void perform_spd(Particle::OnePart*, int, const class CommMacro*);
   void perform_mspd(Particle::OnePart*, int, const class CommMacro*);
   void conservV();
   void conservVE();
   void conservVED();
+  bool sort_evib(const int id1, const int id2);
+  bool positive_evib(const int id);
   double extract(int, int, const char*) { return 0.0; };
 
   struct Params {             // BGK model parameters
@@ -77,6 +81,9 @@ class CollideBGK : public Collide {
       double Zr, Zv;          // mode relax number
       double d_ref;           
       double T0;               //vibrational characteristic temperture
+      double Z_inf;
+      double Tstar;
+      double A, B;
   };
   struct ConservMacro
   {
@@ -90,6 +97,7 @@ class CollideBGK : public Collide {
   // status
   bigint count_try_relaxation, count_done_relaxation, count_fail_relaxation;
   bigint count_do_childcell, count_ignore_childcell, count_warning_ignore_childcell;
+  bigint count_fail_decompose, count_fail_rot_decompose, count_fail_vib_decompose;
 
  protected:
   int nmaxconserv;
@@ -106,7 +114,7 @@ class CollideBGK : public Collide {
   double Pr;                  // Prantl number
   double time_ave_coef;
   double alpha_Pc;
-  int Rot_mod, Vib_mod;       // Identifier for rotational-vibrational mode
+  int relax_rot_mod, relax_vib_mod;       // Identifier for rotational-vibrational mode
   int vib_energy_flag;        // 1/0 = discrete/smooth vibrate energy
   int* Nvibp;                 // 每个粒子需要补充的离散能级数
 
@@ -120,6 +128,13 @@ class CollideBGK : public Collide {
   void print_warning();
 
   void reset_relaxflag();
+
+  bool choleskyDecompose(double* Eij, double* Lij);
+  void matrixModify(double* Eij, double trace, double weight);
+  void decomposeWithModify(double* Eij, double* Lij);
+  void RotNum(double& Zrot, const double Ttr, Params& ps);
+  void VibNum(double& Zvib, const double Ttr, const double nrho, const double mass, Params& ps);
+  void expRK2_Temp(const class NoCommMacro& nmacro, class CommMacro& macro, const double np, const double T0);
 
 };
 

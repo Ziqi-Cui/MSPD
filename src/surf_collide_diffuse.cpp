@@ -107,7 +107,12 @@ SurfCollideDiffuse::SurfCollideDiffuse(SPARTA *sparta, int narg, char **arg) :
   // for macro params interpolation of USP method
   macro = new CommMacro();
   macro->Temp = twall;
-  macro->v[0] = vx; macro->v[1] = vy; macro->v[2] = vz;
+  macro->v[0] = macro->v[1] = macro->v[2] = 0.0;
+  if (tflag) {
+      macro->v[0] = vx;
+      macro->v[1] = vy;
+      macro->v[2] = vz;
+  }
 }
 
 /* ---------------------------------------------------------------------- */

@@ -261,7 +261,7 @@ void Update::run(int nsteps)
       timer->stamp(TIME_MODIFY);
     }
 
-    // move particles
+    // move particles(half-step)
 
     if (cellweightflag) particle->pre_weight();
     (this->*moveptr)();
@@ -280,6 +280,18 @@ void Update::run(int nsteps)
       collide->collisions();
       timer->stamp(TIME_COLLIDE);
     }
+
+    // move particles(half-step)
+
+    if (cellweightflag) particle->pre_weight();
+    (this->*moveptr)();
+    timer->stamp(TIME_MOVE);
+
+    // communicate particles
+
+    comm->migrate_particles(nmigrate, mlist);
+    if (cellweightflag) particle->post_weight();
+    timer->stamp(TIME_COMM);
 
     // diagnostic fixes
 
@@ -352,7 +364,7 @@ template < int DIM, int SURF > void Update::move()
   Grid::ParentCell *pcells = grid->pcells;
   Surf::Tri *tris = surf->tris;
   Surf::Line *lines = surf->lines;
-  double dt = update->dt;
+  double dt = 0.5 * update->dt; //Strang-Splitting half-step
   int notfirst = 0;
 
   // DEBUG
