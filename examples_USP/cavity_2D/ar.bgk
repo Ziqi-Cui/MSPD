@@ -1,7 +1,0 @@
-# BGK relaxation model parameters for each species
-
-# viscosity_ref(μ_ref)
-# omega
-# tref  
-
-Ar   2.117e-5 0.81  273.15

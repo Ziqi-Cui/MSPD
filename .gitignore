@@ -1,5 +1,5 @@
 /examples_diatom
-/examples_USP/TG_vortex
+/examples_USP
 *~
 *.o
 *.so
@@ -49,5 +49,3 @@ Thumbs.db
 /src/out/
 /examples/out/
 /lib/kokkos/out/
-/examples_USP/couette_1D/data
-/examples_USP/TG_vortex
