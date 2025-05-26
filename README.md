@@ -1,6 +1,6 @@
 # MSPD: Multiscale Stochastic Particle Method for Diatomic Gas Flows
 
-This repository extends the SPARTACUS framework with a **Multiscale Stochastic Particle method based on the Fokker–Planck equation (MSPD)**, specifically designed to simulate nonequilibrium flows of **diatomic gases** involving internal energy exchange.
+This repository extends the SPARTACUS framework with a **Multiscale Stochastic Particle method based on the Fokker–Planck equation (MSP)**, specifically designed to simulate nonequilibrium flows of **diatomic gases** involving internal energy exchange.
 
 ## Highlights
 - MSPD incorporates **Langevin-based integration schemes** to model internal mode relaxation (rotational and vibrational).
