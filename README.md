@@ -58,9 +58,10 @@ All benchmark cases reported in our paper are included in the repository:
 - 70-degree blunted cone test case
 
 Please refer to the `examples_MSPD/` directory and follow the detailed usage instructions in each case subfolder.
----
 
-The following sections contain the original README files from **SPARTACUS** and **SPARTA** for reference.
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+*The following sections contain the original README files from **SPARTACUS** and **SPARTA** for reference.*
 
 **SPARTACUS** is a Unified Stochastic Particle (*USP*) solver based on SPARTA.
 **SPARTACUS** stands for **SPARTA** **C**ombined with **US**P.
