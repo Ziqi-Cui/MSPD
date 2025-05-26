@@ -1,0 +1,57 @@
+##############################################
+#       homogeneous internal energy relaxation (N2)
+# date        2025-05-26
+# abstract    MSP validation case for internal energy relaxation.
+#             Initial: n=2.45e21 m^-3, Tt=10000 K, Tr=0 K, Tv=0 K
+#             Zr=5, Zv=10 (constant); temperature-dependent cases also tested （relax_mod 1 1）
+# author      ziqicui
+#             
+##############################################
+
+seed			12345
+#shell			mkdir data
+dimension		2
+global			gridcut -1.0 comm/sort yes 
+
+boundary		p p p
+
+create_box		-0.5 0.5 -0.5 0.5 -0.5 0.5
+create_grid		1 1 1
+
+balance_grid		rcb part
+
+species			N2_MSP.species N2
+mixture			air N2 temp 10000 trot 0.1 tvib 0.1
+
+global			nrho 2.45e21
+#global			fnum 2.45e18
+global			fnum 4e15
+
+
+region			r1 block -1 1 INF INF INF INF
+group			g1 grid region r1 one
+
+
+
+## MSP for diatomic gases
+collide				bgk air mspd air.bgk
+collide_modify		rotate smooth vibrate discrete
+collide_bgk_modify  time_ave 0 reset_wmax 0.98 relax_mod 0 0 vib_energy discrete#smooth #discrete
+
+
+
+create_particles	air n 0
+
+stats			1
+compute			1 grid all air massrho u trot tvib
+compute			2 thermal/grid all all temp press
+compute			3 tvib/grid all all
+compute         4 pflux/grid all all momxy momxz momyz
+
+stats_style	    step cpu np 
+
+timestep		1e-6
+dump			1 grid all 1 data/temp.dat c_2[1] c_1[3] c_3[1]
+
+
+run 			500

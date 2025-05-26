@@ -1,0 +1,16 @@
+# BGK relaxation model parameters for each species
+
+# viscosity_ref(μ_ref)
+# omega
+# tref 
+# Zr
+# Zv
+# T0(character Temp of vibration)
+# Z_inf
+# T*
+# A(MW model for vibration relaxation time)
+# B (Boyd eq 7.9 7.10)
+# C
+
+#Ar	2.117e-5 0.81  273.15	5	30	1e-10	2000
+N2	1.674e-5 0.75  273.15	2.8595	20 3395 18.1 91.5 219.138  0.029

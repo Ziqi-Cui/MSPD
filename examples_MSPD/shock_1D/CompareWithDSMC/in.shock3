@@ -1,0 +1,57 @@
+##############################################
+#       normal shock wave in nitrogen, Ma=3
+# date        2025-05-26
+# abstract    Validation case for MSP method against DSMC.
+#             Upstream: T1=300 K, p1=1 Pa
+#             Vibrational energy not excited;
+#             Z_rot=2.86; domain: x ∈ [−30λ, 50λ], λ=6.84e−3 m
+# author      ziqicui
+#             
+##############################################
+
+seed			12345
+#shell			mkdir data
+dimension		2
+global			gridcut -1.0 comm/sort yes 
+
+boundary			o p p
+
+create_box  	   -0.2052 0.3420 -0.5 0.5 -0.5 0.5
+create_grid 	    200 1 1
+
+balance_grid        rcb part
+
+species			N2.species N2
+mixture				air N2 nrho 2.415e20 vstream 1059.1536 0.0 0.0 temp 300 trot 300 tvib 0.1
+mixture				air1 N2 nrho 9.317e20 vstream 274.5954 0.0 0.0 temp 803.7037 trot 803.7037 tvib 0.1
+global              fnum 2e13
+
+
+region				right block 0 1 -0.5 0.5 -0.5 0.5
+region				left block -1 0 -0.5 0.5 -0.5 0.5
+create_particles    air n 0 region left
+create_particles    air1 n 0 region right
+
+
+## MSPD 
+collide				bgk air mspd air.bgk
+collide_bgk_modify  time_ave 0.99 reset_wmax 0.98 relax_mod 0 0 vib_energy no
+collide_modify		rotate smooth vibrate no
+
+fix					in emit/face air xlo
+fix					in2 emit/face air1 xhi
+stats				100
+stats_style	    step cpu np 
+
+timestep 			1.3e-6
+run					8000
+
+compute			1 grid all all nrho massrho u trot
+compute			2 thermal/grid all all temp press
+compute			3 tvib/grid all all
+compute			4 pflux/grid all all momxx momyy momzz
+
+fix             1 ave/grid all 1 2000 2000 c_1[*] c_4[*] c_2[*] ave running
+dump            1 grid all 2000 data/grid*.dat id f_1[*]
+run 			2000
+

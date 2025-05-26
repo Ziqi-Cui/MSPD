@@ -1,0 +1,56 @@
+##############################################
+#       normal shock wave in nitrogen (MSP vs Exp)
+# date        2025-05-26
+# abstract    Validation case for MSP method using normal shock wave in N2.
+#             Upstream conditions:
+#             Ma=12.9: T1=9.15 K,  p1=0.09811 Pa
+#             VHS model, temperature-denpendent rotational relax time, 
+#             vibration not excited
+# author      ziqicui
+#             
+##############################################
+
+seed			12345
+#shell			mkdir data
+dimension		2
+global			gridcut -1.0 comm/sort yes 
+
+boundary			o p p
+
+create_box  	    -0.0157 0.0261 -0.5 0.5 -0.5 0.5
+create_grid 	    200 1 1
+
+balance_grid        rcb part
+
+species			N2.species N2
+mixture				air N2 nrho 7.7699e20 vstream 795.3849 0.0 0.0 temp 9.15 trot 9.15 tvib 0.1
+mixture				air1 N2 nrho 4.5260e21 vstream 136.5472 0.0 0.0 temp 304.7 trot 304.7 tvib 0.1
+global              fnum 2e13
+
+
+region				right block 0 1 -0.5 0.5 -0.5 0.5
+region				left block -1 0 -0.5 0.5 -0.5 0.5
+create_particles    air n 0 region left
+create_particles    air1 n 0 region right
+
+#MSPD
+collide				bgk air mspd air.bgk
+collide_bgk_modify  time_ave 0.99 reset_wmax 0.98 relax_mod 1 0 vib_energy no
+collide_modify		rotate smooth vibrate no
+
+fix					in emit/face air xlo
+fix					in2 emit/face air1 xhi
+stats				100
+stats_style	    step cpu np 
+
+timestep 			1.3e-7
+run					8000
+
+compute			1 grid all all nrho massrho u trot tvib
+compute			2 thermal/grid all all temp press
+compute			3 tvib/grid all all
+
+fix             1 ave/grid all 1 2000 2000 c_1[*] c_2[*] ave running
+dump            1 grid all 2000 data/grid*.dat id f_1[*]
+run 			2000
+

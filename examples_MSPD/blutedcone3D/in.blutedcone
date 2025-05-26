@@ -1,0 +1,66 @@
+##############################################
+#       hypersonic flow over a 70-degree blunted cone
+# date        2025-05-26
+# abstract    N2, Ma=20.2, Kn≈0.033 (based on cone diameter), 
+#             V_inf=1503 m/s, T_inf=13.3 K, n_inf=3.72e20 m^-3, 
+#             vibrational mode unexcited, Z_rot=5
+# author      ziqicui
+#             
+##############################################
+
+
+seed			    13579
+dimension		    3
+global				surfmax 999
+
+boundary		    o o o
+
+create_box		    -0.02 0.10 -0.06 0.06 -0.06 0.06
+create_grid		    120 120 120 clump xyz
+
+balance_grid		 rcb part
+global			    gridcut 0.002 comm/sort yes
+global			    nrho 3.72e20 fnum 4e10
+species			    air.species N2
+mixture			    air N2 vstream 1503 0.0 0.0 temp 13.3 trot 13.3 tvib 0.1		#alpha=0
+#mixture			 air N2 vstream 1480.2 261.0 0.0 temp 13.3 trot 13.3 tvib 0.1	#alpha=10
+#mixture			 air N2 vstream 1412.4 514.05 0.0 temp 13.3 trot 13.3 tvib 0.1	#alpha=20
+#mixture			 air N2 vstream 1301.6 751.5 0.0 temp 13.3 trot 13.3 tvib 0.1	#alpha=30
+
+read_surf		   blutedcone.dat scale 0.001 0.001 0.001
+
+write_surf			finalsurf.dat
+
+surf_collide		1 diffuse 300 1
+surf_modify		    all collide 1
+
+#MSPD
+collide				bgk air mspd N2.bgk 
+collide_bgk_modify  time_ave 0.99 relax_mod 0 0 vib_energy no
+
+collide_modify		rotate smooth vibrate no #discrete
+
+
+fix			       in emit/face air xlo xhi yhi ylo zhi zlo
+fix				    10 balance 100 1.1 rcb part
+
+timestep		    4e-7
+stats			    100
+stats_style		    step cpu np nscoll nscheck
+
+run					5000
+
+compute			    1 grid all all u v n nrho massrho trot
+fix 			    1 ave/grid all 1 5000 5000 c_1[*] ave running
+compute			    2 thermal/grid all all temp press
+fix			        2 ave/grid all 1 5000 5000 c_2[*] ave running
+dump 			    1 grid all 50000 data/gridw*.dat xc yc zc id f_1[*]  f_2[*]
+dump_modify		    1 format float %12.5g
+
+compute 		    4 surf all all etot ke erot press shx shy nwt
+fix			       4 ave/surf all 1 5000 5000 c_4[*] ave running
+dump 			    4 surf all 50000 data/surfw*.dat id v1x f_4[*]
+dump_modify		    4 format float %12.5g
+
+run			        95000
+

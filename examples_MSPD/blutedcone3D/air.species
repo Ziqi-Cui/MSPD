@@ -1,0 +1,17 @@
+# Species data
+
+# ID
+# Molwt (amu)
+# Molmass (kg)
+# Rotational dof
+# RotRel  (not inverse)
+# Vibrational dof
+# VibRel
+# VibTemp (K)
+# species wt
+# charge
+# rotrel_differ 
+# vibrel_differ 
+
+N2  28.00    4.65E-26   2    6.12   2    1e15    3390.0    1.0      0.0     15    60
+
